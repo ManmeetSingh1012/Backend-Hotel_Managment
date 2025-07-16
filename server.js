@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -8,7 +8,7 @@ dotenv.config();
 // Import database configuration
 import cookieParser from 'cookie-parser';
 import { testConnection, syncDatabase } from './config/database.js';
-import { sequelize, User } from './models/index.js';
+
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -43,7 +43,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Import routes
 import authRoutes from './routes/auth.js';
-import userRoutes from './routes/userRoutes.js';
+
 import hotelRoutes from './routes/hotelRoutes.js';
 import hotelManagerRoutes from './routes/hotelManagerRoutes.js';
 import guestRecordRoutes from './routes/guestRecordRoutes.js';
@@ -68,7 +68,7 @@ app.get('/api/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
+
 app.use('/api/hotels', hotelRoutes);
 app.use('/api/hotel-managers', hotelManagerRoutes);
 app.use('/api/guest-records', guestRecordRoutes);
@@ -82,7 +82,7 @@ app.get('/', (req, res) => {
       test: '/api/test',
       health: '/api/health',
       auth: '/api/auth',
-      users: '/api/users',
+   
       hotels: '/api/hotels',
       hotelManagers: '/api/hotel-managers',
       guestRecords: '/api/guest-records'

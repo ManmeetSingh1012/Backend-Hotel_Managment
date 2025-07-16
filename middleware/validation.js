@@ -102,9 +102,11 @@ const validateRoomData = (req, res, next) => {
 
 // Validate hotel data
 const validateHotelData = (req, res, next) => {
-  const { name, address, phone, email, totalRooms } = req.body;
-  const errors = [];
 
+  
+  const { name, address, phone,  totalRooms } = req.body;
+  const errors = [];
+ console.log(req.body)
   // Name validation
   if (!name || name.trim().length < 2 || name.trim().length > 200) {
     errors.push('Hotel name must be between 2 and 200 characters');
@@ -121,11 +123,7 @@ const validateHotelData = (req, res, next) => {
     errors.push('Please provide a valid phone number');
   }
 
-  // Email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!email || !emailRegex.test(email)) {
-    errors.push('Please provide a valid email address');
-  }
+ 
 
   // Total rooms validation
   if (!totalRooms || isNaN(totalRooms) || totalRooms < 1) {

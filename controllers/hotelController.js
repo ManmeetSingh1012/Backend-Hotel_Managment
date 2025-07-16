@@ -4,14 +4,14 @@ import { Op } from 'sequelize';
 // Create hotel (admin only)
 export const createHotel = async (req, res) => {
   try {
-    const { name, address, phone, email, totalRooms } = req.body;
+    const { name, address, phone,  totalRooms } = req.body;
 
     // Create hotel with the current user as creator
     const hotel = await Hotel.create({
       name,
       address,
       phone,
-      email,
+      
       totalRooms,
       createdBy: req.user.id
     });

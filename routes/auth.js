@@ -10,7 +10,7 @@ router.post('/signup', validateUserSignup, signup);
 router.post('/signin', validateUserSignin, signin);
 
 // Protected routes
-router.get('/profile', authenticateToken, getProfile);
+router.get('/me', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, updateProfile);
 
 export default router; 

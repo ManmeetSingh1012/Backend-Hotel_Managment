@@ -31,14 +31,7 @@ const Hotel = sequelize.define('Hotel', {
       is: /^[\+]?[1-9][\d]{0,15}$/ // International phone number format
     }
   },
-  email: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
-    validate: {
-      isEmail: true,
-      notEmpty: true
-    }
-  },
+ 
   totalRooms: {
     type: DataTypes.INTEGER,
     allowNull: false,
