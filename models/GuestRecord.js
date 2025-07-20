@@ -3,12 +3,13 @@ import { sequelize } from '../config/database.js';
 
 const GuestRecord = sequelize.define('GuestRecord', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     primaryKey: true,
-    autoIncrement: true
+    defaultValue: DataTypes.UUIDV4,
+    allowNull: false
   },
   hotelId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'hotels',
@@ -18,12 +19,10 @@ const GuestRecord = sequelize.define('GuestRecord', {
     onDelete: 'RESTRICT'
   },
   serialNo: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.INTEGER,
     allowNull: false,
-    unique: true,
-    validate: {
-      notEmpty: true
-    }
+    autoIncrement: true,
+    unique: true
   },
   guestName: {
     type: DataTypes.STRING(200),
@@ -38,7 +37,7 @@ const GuestRecord = sequelize.define('GuestRecord', {
     allowNull: false,
     validate: {
       notEmpty: true,
-      is: /^[\+]?[1-9][\d]{0,15}$/ // International phone number format
+      is: /^[\+]?[1-9][\d]{0,15}$/
     }
   },
   roomNo: {
@@ -49,50 +48,54 @@ const GuestRecord = sequelize.define('GuestRecord', {
       len: [1, 20]
     }
   },
-  checkIn: {
-    type: DataTypes.DATE,
-    allowNull: false,
+  checkinDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    // Remove defaultValue to allow explicit null checks
     validate: {
-      notNull: true,
       isDate: true
     }
   },
-  checkOut: {
-    type: DataTypes.DATE,
+  checkinTime: {
+    type: DataTypes.TIME,
     allowNull: false,
     validate: {
-      notNull: true,
+      notNull: true
+    }
+  },
+  checkoutDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    // Remove defaultValue to allow explicit null checks
+    validate: {
       isDate: true
     }
   },
-  paymentModes: {
-    type: DataTypes.JSON,
+  checkoutTime: {
+    type: DataTypes.TIME,
+    allowNull: true
+  },
+  paymentMode: {
+    type: DataTypes.ENUM('card', 'cash', 'upi', 'bank_transfer', 'to_harsh'),
     allowNull: false,
     validate: {
       notNull: true,
-      isValidPaymentModes(value) {
-        const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'digital_wallet'];
-        if (!Array.isArray(value) || value.length === 0) {
-          throw new Error('Payment modes must be a non-empty array');
-        }
-        for (const mode of value) {
-          if (!allowedModes.includes(mode)) {
-            throw new Error(`Invalid payment mode: ${mode}. Allowed modes: ${allowedModes.join(', ')}`);
-          }
-        }
+      isIn: {
+        args: [['card', 'cash', 'upi', 'bank_transfer', 'to_harsh']],
+        msg: 'Payment mode must be one of: card, cash, upi, bank_transfer, to_harsh'
       }
     }
   },
   advancePayment: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
+    allowNull: true,
     defaultValue: 0,
     validate: {
       min: 0,
       isDecimal: true
     }
   },
-  rentBill: {
+  rent: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     validate: {
@@ -101,16 +104,16 @@ const GuestRecord = sequelize.define('GuestRecord', {
       notNull: true
     }
   },
-  foodBill: {
+  food: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
+    allowNull: true, // Fixed typo: was 'ture'
     defaultValue: 0,
     validate: {
       min: 0,
       isDecimal: true
     }
   },
-  totalAmount: {
+  bill: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     validate: {
@@ -121,7 +124,7 @@ const GuestRecord = sequelize.define('GuestRecord', {
   },
   pending: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
+    allowNull: true,
     defaultValue: 0,
     validate: {
       min: 0,
@@ -144,63 +147,48 @@ const GuestRecord = sequelize.define('GuestRecord', {
   updatedAt: 'updatedAt',
   hooks: {
     beforeValidate: async (guestRecord) => {
-      // Validate checkOut is after checkIn
-      if (guestRecord.checkIn && guestRecord.checkOut) {
-        if (new Date(guestRecord.checkOut) <= new Date(guestRecord.checkIn)) {
-          throw new Error('Check-out date must be after check-in date');
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Auto-populate checkin_date when checkin_time is provided but date is not
+      if (guestRecord.checkinTime && !guestRecord.checkinDate) {
+        guestRecord.checkinDate = today;
+      }
+      
+      // Auto-populate checkout_date when checkout_time is provided but date is not
+      if (guestRecord.checkoutTime && !guestRecord.checkoutDate) {
+        guestRecord.checkoutDate = today;
+      }
+      
+      // Validate checkout date/time is after checkin date/time
+      if (guestRecord.checkinDate && guestRecord.checkoutDate && 
+          guestRecord.checkinTime && guestRecord.checkoutTime) {
+        const checkinDateTime = new Date(`${guestRecord.checkinDate}T${guestRecord.checkinTime}`);
+        const checkoutDateTime = new Date(`${guestRecord.checkoutDate}T${guestRecord.checkoutTime}`);
+        
+        if (checkoutDateTime <= checkinDateTime) {
+          throw new Error('Check-out date/time must be after check-in date/time');
         }
       }
     },
     beforeCreate: async (guestRecord) => {
-      // Generate serial number if not provided
-      if (!guestRecord.serialNo) {
-        guestRecord.serialNo = await generateSerialNumber(guestRecord.hotelId);
-      }
-      
-      // Calculate total amount and pending
+      // Calculate bill and pending amounts
       calculateAmounts(guestRecord);
     },
     beforeUpdate: async (guestRecord) => {
-      // Calculate total amount and pending
+      // Calculate bill and pending amounts
       calculateAmounts(guestRecord);
     }
   }
 });
 
-// Helper function to generate serial number
-async function generateSerialNumber(hotelId) {
-  const year = new Date().getFullYear();
-  const prefix = `${hotelId}-${year}-`;
-  
-  // Find the last record for this hotel and year
-  const lastRecord = await sequelize.models.GuestRecord.findOne({
-    where: {
-      hotelId: hotelId,
-      serialNo: {
-        [sequelize.Op.like]: `${prefix}%`
-      }
-    },
-    order: [['serialNo', 'DESC']]
-  });
-
-  let sequence = 1;
-  if (lastRecord) {
-    const lastSerial = lastRecord.serialNo;
-    const lastSequence = parseInt(lastSerial.split('-')[2]);
-    sequence = lastSequence + 1;
-  }
-
-  return `${prefix}${sequence.toString().padStart(4, '0')}`;
-}
-
 // Helper function to calculate amounts
 function calculateAmounts(guestRecord) {
-  const rentBill = parseFloat(guestRecord.rentBill) || 0;
-  const foodBill = parseFloat(guestRecord.foodBill) || 0;
+  const rent = parseFloat(guestRecord.rent) || 0;
+  const food = parseFloat(guestRecord.food) || 0;
   const advancePayment = parseFloat(guestRecord.advancePayment) || 0;
 
-  guestRecord.totalAmount = rentBill + foodBill;
-  guestRecord.pending = Math.max(0, guestRecord.totalAmount - advancePayment);
+  guestRecord.bill = rent + food;
+  guestRecord.pending = Math.max(0, guestRecord.bill - advancePayment);
 }
 
-export default GuestRecord; 
+export default GuestRecord;

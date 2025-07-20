@@ -3,9 +3,10 @@ import { sequelize } from '../config/database.js';
 
 const Hotel = sequelize.define('Hotel', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     primaryKey: true,
-    autoIncrement: true
+    defaultValue: DataTypes.UUIDV4, // Use database-generated UUID v4
+    allowNull: false
   },
   name: {
     type: DataTypes.STRING(200),
@@ -41,7 +42,7 @@ const Hotel = sequelize.define('Hotel', {
     }
   },
   createdBy: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'users',

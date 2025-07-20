@@ -7,7 +7,8 @@ import {
   deleteGuestRecord,
   searchGuestRecords,
   getGuestRecordsByDateRange,
-  getGuestRecordsByHotel
+  getGuestRecordsByHotel,
+  getGuestRecordStats
 } from '../controllers/guestRecordController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
 import { checkManagerHotelAccess } from '../middleware/hotelAccess.js';
@@ -41,5 +42,8 @@ router.get('/date-range', authorizeRole('manager', 'admin'), getGuestRecordsByDa
 
 // Get guest records by hotel (managers and admins only)
 router.get('/hotel/:hotelId', authorizeRole('manager', 'admin'), checkManagerHotelAccess, getGuestRecordsByHotel);
+
+// Get guest record statistics (managers and admins only)
+router.get('/stats', authorizeRole('manager', 'admin'), getGuestRecordStats);
 
 export default router; 

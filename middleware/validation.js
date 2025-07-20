@@ -169,14 +169,15 @@ const validateHotelManagerAssignment = (req, res, next) => {
   const { hotelId, managerId } = req.body;
   const errors = [];
 
-  // Hotel ID validation
-  if (!hotelId || isNaN(hotelId) || hotelId < 1) {
-    errors.push('Valid hotel ID is required');
+  // Hotel ID validation (UUID format)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!hotelId || !uuidRegex.test(hotelId)) {
+    errors.push('Valid hotel ID (UUID) is required');
   }
 
-  // Manager ID validation
-  if (!managerId || isNaN(managerId) || managerId < 1) {
-    errors.push('Valid manager ID is required');
+  // Manager ID validation (UUID format)
+  if (!managerId || !uuidRegex.test(managerId)) {
+    errors.push('Valid manager ID (UUID) is required');
   }
 
   if (errors.length > 0) {
@@ -218,18 +219,22 @@ const validateGuestRecordData = (req, res, next) => {
     guestName,
     phoneNo,
     roomNo,
-    checkIn,
-    checkOut,
-    paymentModes,
+    checkinDate,
+    checkinTime,
+    checkoutDate,
+    checkoutTime,
+    paymentMode,
     advancePayment,
-    rentBill,
-    foodBill
+    rent,
+    food,
+    bill
   } = req.body;
   const errors = [];
 
-  // Hotel ID validation
-  if (!hotelId || isNaN(hotelId) || hotelId < 1) {
-    errors.push('Valid hotel ID is required');
+  // Hotel ID validation (UUID format)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!hotelId || !uuidRegex.test(hotelId)) {
+    errors.push('Valid hotel ID (UUID) is required');
   }
 
   // Guest name validation
@@ -238,54 +243,75 @@ const validateGuestRecordData = (req, res, next) => {
   }
 
   // Phone number validation
-  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-  if (!phoneNo || !phoneRegex.test(phoneNo)) {
-    errors.push('Please provide a valid phone number');
+  // Accepts 10-16 digit numbers, optionally starting with '+'
+  const phoneRegex = /^(\+?\d{1,4}[- ]?)?\d{10,16}$/;
+  if (
+    !phoneNo ||
+    typeof phoneNo !== 'string' ||
+    !phoneRegex.test(phoneNo.trim())
+  ) {
+    errors.push('Please provide a valid phone number (10-16 digits, may start with country code)');
   }
+  
 
   // Room number validation
   if (!roomNo || roomNo.trim().length === 0 || roomNo.trim().length > 20) {
     errors.push('Room number is required and must be less than 20 characters');
   }
 
-  // Check-in date validation
-  if (!checkIn || !Date.parse(checkIn)) {
-    errors.push('Valid check-in date is required');
-  }
-
-  // Check-out date validation
-  if (!checkOut || !Date.parse(checkOut)) {
-    errors.push('Valid check-out date is required');
-  }
-
-  // Check-out must be after check-in
-  if (checkIn && checkOut && new Date(checkOut) <= new Date(checkIn)) {
-    errors.push('Check-out date must be after check-in date');
-  }
-
-  // Payment modes validation
-  const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'digital_wallet'];
-  if (!paymentModes || !Array.isArray(paymentModes) || paymentModes.length === 0) {
-    errors.push('Payment modes must be a non-empty array');
+  // Check-in time validation (required)
+  if (!checkinTime) {
+    errors.push('Check-in time is required');
   } else {
-    for (const mode of paymentModes) {
-      if (!allowedModes.includes(mode)) {
-        errors.push(`Invalid payment mode: ${mode}. Allowed modes: ${allowedModes.join(', ')}`);
-      }
+    // Validate time format (HH:MM:SS or HH:MM)
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
+    if (!timeRegex.test(checkinTime)) {
+      errors.push('Check-in time must be in valid time format (HH:MM or HH:MM:SS)');
     }
   }
 
+
+  // Check-out must be after check-in (only validate if both dates and times are provided)
+  if (checkinDate && checkoutDate && checkinTime && checkoutTime) {
+    const checkinDateTime = new Date(`${checkinDate}T${checkinTime}`);
+    const checkoutDateTime = new Date(`${checkoutDate}T${checkoutTime}`);
+    
+    if (checkoutDateTime <= checkinDateTime) {
+      errors.push('Check-out date/time must be after check-in date/time');
+    }
+  } else if (!checkinDate && !checkoutDate && checkinTime && checkoutTime) {
+    // If no dates are provided but both times are, compare times assuming same day
+    const [checkinHour, checkinMin] = checkinTime.split(':').map(Number);
+    const [checkoutHour, checkoutMin] = checkoutTime.split(':').map(Number);
+    
+    if (checkoutHour < checkinHour || (checkoutHour === checkinHour && checkoutMin <= checkinMin)) {
+      errors.push('Check-out time must be after check-in time');
+    }
+  }
+
+  // Payment mode validation (now expects a string)
+  const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'digital_wallet'];
+  if (!paymentMode || typeof paymentMode !== 'string') {
+    errors.push('Payment mode must be a non-empty string');
+  } else if (!allowedModes.includes(paymentMode)) {
+    errors.push(`Invalid payment mode: ${paymentMode}. Allowed modes: ${allowedModes.join(', ')}`);
+  }
+
   // Monetary values validation
-  if (advancePayment !== undefined && (isNaN(advancePayment) || advancePayment < 0)) {
+  if (advancePayment !== undefined && (isNaN(advancePayment) || parseFloat(advancePayment) < 0)) {
     errors.push('Advance payment must be a non-negative number');
   }
 
-  if (!rentBill || isNaN(rentBill) || rentBill < 0) {
-    errors.push('Rent bill must be a non-negative number');
+  if (!rent || isNaN(rent) || parseFloat(rent) < 0) {
+    errors.push('Rent must be a non-negative number and is required');
   }
 
-  if (foodBill !== undefined && (isNaN(foodBill) || foodBill < 0)) {
-    errors.push('Food bill must be a non-negative number');
+  if (food !== undefined && (isNaN(food) || parseFloat(food) < 0)) {
+    errors.push('Food must be a non-negative number');
+  }
+
+  if (bill !== undefined && (isNaN(bill) || parseFloat(bill) < 0)) {
+    errors.push('Bill must be a non-negative number');
   }
 
   if (errors.length > 0) {
@@ -305,12 +331,14 @@ const validateGuestRecordUpdate = (req, res, next) => {
     guestName,
     phoneNo,
     roomNo,
-    checkIn,
-    checkOut,
-    paymentModes,
+    checkinDate,
+    checkinTime,
+    checkoutDate,
+    checkoutTime,
+    paymentMode,
     advancePayment,
-    rentBill,
-    foodBill
+    rent,
+    food
   } = req.body;
   const errors = [];
 
@@ -336,50 +364,72 @@ const validateGuestRecordUpdate = (req, res, next) => {
     }
   }
 
+  // Check-in time validation (if provided)
+  if (checkinTime !== undefined) {
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
+    if (!checkinTime || !timeRegex.test(checkinTime)) {
+      errors.push('Check-in time must be in valid time format (HH:MM or HH:MM:SS)');
+    }
+  }
+
+  // Check-out time validation (if provided)
+  if (checkoutTime !== undefined) {
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
+    if (!timeRegex.test(checkoutTime)) {
+      errors.push('Check-out time must be in valid time format (HH:MM or HH:MM:SS)');
+    }
+  }
+
   // Check-in date validation (if provided)
-  if (checkIn !== undefined) {
-    if (!checkIn || !Date.parse(checkIn)) {
+  if (checkinDate !== undefined) {
+    if (!checkinDate || !Date.parse(checkinDate)) {
       errors.push('Valid check-in date is required');
     }
   }
 
   // Check-out date validation (if provided)
-  if (checkOut !== undefined) {
-    if (!checkOut || !Date.parse(checkOut)) {
+  if (checkoutDate !== undefined) {
+    if (!checkoutDate || !Date.parse(checkoutDate)) {
       errors.push('Valid check-out date is required');
     }
   }
 
-  // Check-out must be after check-in (if both are provided)
-  if (checkIn && checkOut && new Date(checkOut) <= new Date(checkIn)) {
-    errors.push('Check-out date must be after check-in date');
-  }
-
-  // Payment modes validation (if provided)
-  if (paymentModes !== undefined) {
-    const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'digital_wallet'];
-    if (!Array.isArray(paymentModes) || paymentModes.length === 0) {
-      errors.push('Payment modes must be a non-empty array');
-    } else {
-      for (const mode of paymentModes) {
-        if (!allowedModes.includes(mode)) {
-          errors.push(`Invalid payment mode: ${mode}. Allowed modes: ${allowedModes.join(', ')}`);
-        }
-      }
+  // Check-out must be after check-in (if both dates and times are provided)
+  if (checkinDate && checkoutDate && checkinTime && checkoutTime) {
+    const checkinDateTime = new Date(`${checkinDate}T${checkinTime}`);
+    const checkoutDateTime = new Date(`${checkoutDate}T${checkoutTime}`);
+    
+    if (checkoutDateTime <= checkinDateTime) {
+      errors.push('Check-out date/time must be after check-in date/time');
+    }
+  } else if (!checkinDate && !checkoutDate && checkinTime && checkoutTime) {
+    // If no dates are provided but both times are, compare times assuming same day
+    const [checkinHour, checkinMin] = checkinTime.split(':').map(Number);
+    const [checkoutHour, checkoutMin] = checkoutTime.split(':').map(Number);
+    
+    if (checkoutHour < checkinHour || (checkoutHour === checkinHour && checkoutMin <= checkinMin)) {
+      errors.push('Check-out time must be after check-in time');
     }
   }
 
+   // Payment mode validation (now expects a string)
+   const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'digital_wallet'];
+   if (!paymentMode || typeof paymentMode !== 'string') {
+     errors.push('Payment mode must be a non-empty string');
+   } else if (!allowedModes.includes(paymentMode)) {
+     errors.push(`Invalid payment mode: ${paymentMode}. Allowed modes: ${allowedModes.join(', ')}`);
+   }
   // Monetary values validation (if provided)
-  if (advancePayment !== undefined && (isNaN(advancePayment) || advancePayment < 0)) {
+  if (advancePayment !== undefined && (isNaN(advancePayment) || parseFloat(advancePayment) < 0)) {
     errors.push('Advance payment must be a non-negative number');
   }
 
-  if (rentBill !== undefined && (isNaN(rentBill) || rentBill < 0)) {
-    errors.push('Rent bill must be a non-negative number');
+  if (rent !== undefined && (isNaN(rent) || parseFloat(rent) < 0)) {
+    errors.push('Rent must be a non-negative number');
   }
 
-  if (foodBill !== undefined && (isNaN(foodBill) || foodBill < 0)) {
-    errors.push('Food bill must be a non-negative number');
+  if (food !== undefined && (isNaN(food) || parseFloat(food) < 0)) {
+    errors.push('Food must be a non-negative number');
   }
 
   if (errors.length > 0) {
@@ -392,6 +442,8 @@ const validateGuestRecordUpdate = (req, res, next) => {
 
   next();
 };
+
+
 
 export {
   validateUserSignup,

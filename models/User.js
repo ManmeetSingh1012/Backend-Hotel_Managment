@@ -9,9 +9,10 @@ if (!sequelize) {
 
 const User = sequelize.define('User', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     primaryKey: true,
-    autoIncrement: true
+    defaultValue: DataTypes.UUIDV4, // Use database-generated UUID v4
+    allowNull: false
   },
   name: {
     type: DataTypes.STRING(100),
@@ -59,6 +60,7 @@ const User = sequelize.define('User', {
   timestamps: true,
   hooks: {
     beforeCreate: async (user) => {
+    
       if (user.password) {
         user.password = await bcrypt.hash(user.password, 12);
       }

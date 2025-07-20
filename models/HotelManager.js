@@ -3,12 +3,13 @@ import { sequelize } from '../config/database.js';
 
 const HotelManager = sequelize.define('HotelManager', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     primaryKey: true,
-    autoIncrement: true
+    defaultValue: DataTypes.UUIDV4, // Use database-generated UUID v4
+    allowNull: false
   },
   hotelId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'hotels',
@@ -18,7 +19,7 @@ const HotelManager = sequelize.define('HotelManager', {
     onDelete: 'CASCADE'
   },
   managerId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'users',
