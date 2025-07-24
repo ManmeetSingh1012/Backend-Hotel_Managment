@@ -5,35 +5,34 @@ dotenv.config();
 
 // Supabase PostgreSQL connection configuration
 const getDatabaseConfig = () => {
-  // console.log('🔗 Attempting to connect to database...');
+  console.log('🔗 Attempting to connect to database...');
   
-  // if (process.env.DATABASE_URL) {
-  //   return {
-  //     url: process.env.DATABASE_URL,
-  //     dialect: 'postgres',
-  //     dialectOptions: {
-  //       ssl: {
-  //         require: true,
-  //         rejectUnauthorized: false
-  //       }
-  //     },
-  //     logging: process.env.NODE_ENV === 'development' ? console.log : false,
-  //     pool: {
-  //       max: 5,
-  //       min: 0,
-  //       acquire: 30000,
-  //       idle: 10000
-  //     },
-  //     retry: {
-  //       max: 3,
-  //       timeout: 5000
-  //     }
-  //   };
-  // }
+  if (process.env.DATABASE_URL) {
+    // Parse the DATABASE_URL manually to avoid password parsing issues
+    const url = new URL(process.env.DATABASE_URL);
+    
+    return {
+      host: url.hostname,
+      port: url.port || 5432,
+      database: url.pathname.slice(1), // Remove leading slash
+      username: url.username,
+      password: url.password,
+      dialect: 'postgres',
+      dialectOptions: {
+        ssl: false
+      },
+      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      }
+    };
+  }
 
   // Default local development configuration
-  // console.warn('⚠️  No Supabase database configuration found');
-
+  console.warn('⚠️  No Supabase database configuration found');
   
   return {
     host: 'localhost',
