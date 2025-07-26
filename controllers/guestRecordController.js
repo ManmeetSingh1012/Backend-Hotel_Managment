@@ -291,14 +291,6 @@ export const getGuestRecordById = async (req, res) => {
     // Find the guest records for the hotel
     const guestRecords = await GuestRecord.findAll(queryOptions);
 
-    if (!guestRecords || guestRecords.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Record not found',
-        message: 'No guest records found for this hotel'
-      });
-    }
-
     // Check authorization for each record's hotelId (should be the same for all)
     if (userRole === 'manager') {
       const assignment = await HotelManager.findOne({
@@ -321,6 +313,15 @@ export const getGuestRecordById = async (req, res) => {
         success: false,
         error: 'Access denied',
         message: 'You do not have permission to view these guest records'
+      });
+    }
+
+    // If no records found, return 200 with empty array
+    if (!guestRecords || guestRecords.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No guest records found for this hotel',
+        data: []
       });
     }
 

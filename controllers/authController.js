@@ -28,7 +28,8 @@ const signup = async (req, res) => {
       username,
       email,
       password,
-      role: role || 'admin'
+      role: role || 'admin',
+      lastLogin: new Date()
     });
 
     // Generate token
