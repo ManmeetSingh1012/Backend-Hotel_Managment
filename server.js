@@ -45,10 +45,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Import routes
 import authRoutes from './routes/auth.js';
-
 import hotelRoutes from './routes/hotelRoutes.js';
 import hotelManagerRoutes from './routes/hotelManagerRoutes.js';
 import guestRecordRoutes from './routes/guestRecordRoutes.js';
+import expenseRoutes from './routes/expenseRoutes.js';
 
 // Test route to verify server is working
 app.get('/api/test', (req, res) => {
@@ -74,6 +74,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/hotels', hotelRoutes);
 app.use('/api/hotel-managers', hotelManagerRoutes);
 app.use('/api/guest-records', guestRecordRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 // Root route
 app.get('/', (req, res) => {
@@ -87,7 +88,8 @@ app.get('/', (req, res) => {
    
       hotels: '/api/hotels',
       hotelManagers: '/api/hotel-managers',
-      guestRecords: '/api/guest-records'
+      guestRecords: '/api/guest-records',
+      expenses: '/api/expenses'
     }
   });
 });

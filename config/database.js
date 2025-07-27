@@ -57,6 +57,16 @@ const getDatabaseConfig = () => {
 // Create Sequelize instance
 const sequelize = new Sequelize(getDatabaseConfig());
 
+// Function to create a Sequelize instance for a specific database
+const createDatabaseInstance = (databaseName) => {
+  if (!databaseName) {
+    throw new Error('Database name is required');
+  }
+  
+  const config = getDatabaseConfig(databaseName);
+  return new Sequelize(config);
+};
+
 // Test database connection
 const testConnection = async () => {
   try {
@@ -70,17 +80,28 @@ const testConnection = async () => {
 }
 
 // Sync database (create tables if they don't exist)
-const syncDatabase = async () => {
+const syncDatabase = async (databaseName = null, options = { alter: true }) => {
   try {
-    await sequelize.sync({ alter: true });
-    console.log('✅ Database synchronized successfully.');
+    const instance = databaseName ? createDatabaseInstance(databaseName) : sequelize;
+    const dbName = instance.config.database;
+    
+    console.log(`🔄 Syncing database: ${dbName}`);
+    await instance.sync(options);
+    console.log(`✅ Database '${dbName}' synchronized successfully.`);
+    
+    // Close the connection if it's a temporary instance
+    if (databaseName) {
+      await instance.close();
+    }
   } catch (error) {
     console.error('❌ Error synchronizing database:', error);
+    throw error;
   }
 };
 
 export {
   sequelize,
+  createDatabaseInstance,
   testConnection,
   syncDatabase
 }; 

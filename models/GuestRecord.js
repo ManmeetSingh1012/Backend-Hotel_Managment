@@ -156,6 +156,7 @@ const GuestRecord = sequelize.define('GuestRecord', {
       
       // Auto-populate checkout_date when checkout_time is provided but date is not
       if (guestRecord.checkoutTime && !guestRecord.checkoutDate) {
+        console.log("checkoutDate",today,guestRecord.checkoutTime);
         guestRecord.checkoutDate = today;
       }
       

@@ -3,6 +3,7 @@ import User from './User.js';
 import Hotel from './Hotel.js';
 import HotelManager from './HotelManager.js';
 import GuestRecord from './GuestRecord.js';
+import Expense from './Expense.js';
 
 // Define associations
 // Hotel belongs to User (createdBy relationship)
@@ -67,11 +68,23 @@ Hotel.hasMany(GuestRecord, {
   as: 'guestRecords'
 });
 
+// Expense associations
+Expense.belongsTo(Hotel, {
+  foreignKey: 'hotelId',
+  as: 'hotel'
+});
+
+Hotel.hasMany(Expense, {
+  foreignKey: 'hotelId',
+  as: 'expenses'
+});
+
 // Export models and sequelize instance
 export {
   sequelize,
   User,
   Hotel,
   HotelManager,
-  GuestRecord
+  GuestRecord,
+  Expense
 }; 

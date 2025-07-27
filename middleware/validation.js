@@ -445,6 +445,114 @@ const validateGuestRecordUpdate = (req, res, next) => {
 
 
 
+// Validate expense data
+const validateExpenseData = (req, res, next) => {
+  const { hotelId, expenseType, amount, paymentMode, description } = req.body;
+  const errors = [];
+
+  // Hotel ID validation
+  if (!hotelId || typeof hotelId !== 'string') {
+    errors.push('Hotel ID is required and must be a string');
+  }
+
+  // Expense type validation
+  const allowedExpenseTypes = ['food', 'salary', 'utilities', 'maintenance', 'supplies', 'marketing', 'insurance', 'taxes', 'rent', 'other'];
+  if (!expenseType || typeof expenseType !== 'string') {
+    errors.push('Expense type is required and must be a string');
+  } else if (!allowedExpenseTypes.includes(expenseType)) {
+    errors.push(`Invalid expense type: ${expenseType}. Allowed types: ${allowedExpenseTypes.join(', ')}`);
+  }
+
+  // Amount validation
+  if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+    errors.push('Amount is required and must be a positive number');
+  }
+
+  // Payment mode validation
+  const allowedPaymentModes = ['card', 'cash', 'upi', 'bank_transfer', 'cheque', 'online'];
+  if (!paymentMode || typeof paymentMode !== 'string') {
+    errors.push('Payment mode is required and must be a string');
+  } else if (!allowedPaymentModes.includes(paymentMode)) {
+    errors.push(`Invalid payment mode: ${paymentMode}. Allowed modes: ${allowedPaymentModes.join(', ')}`);
+  }
+
+  // Description validation (optional but if provided, validate length)
+  if (description !== undefined && description !== null) {
+    if (typeof description !== 'string') {
+      errors.push('Description must be a string');
+    } else if (description.trim().length > 1000) {
+      errors.push('Description must be less than 1000 characters');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+// Validate expense update data
+const validateExpenseUpdate = (req, res, next) => {
+  const { expenseType, amount, paymentMode, description } = req.body;
+  const errors = [];
+
+  // Expense type validation (if provided)
+  if (expenseType !== undefined) {
+    const allowedExpenseTypes = ['food', 'salary', 'utilities', 'maintenance', 'supplies', 'marketing', 'insurance', 'taxes', 'rent', 'other'];
+    if (typeof expenseType !== 'string') {
+      errors.push('Expense type must be a string');
+    } else if (!allowedExpenseTypes.includes(expenseType)) {
+      errors.push(`Invalid expense type: ${expenseType}. Allowed types: ${allowedExpenseTypes.join(', ')}`);
+    }
+  }
+
+  // Amount validation (if provided)
+  if (amount !== undefined) {
+    if (isNaN(amount) || parseFloat(amount) <= 0) {
+      errors.push('Amount must be a positive number');
+    }
+  }
+
+  // Payment mode validation (if provided)
+  if (paymentMode !== undefined) {
+    const allowedPaymentModes = ['card', 'cash', 'upi', 'bank_transfer', 'cheque', 'online'];
+    if (typeof paymentMode !== 'string') {
+      errors.push('Payment mode must be a string');
+    } else if (!allowedPaymentModes.includes(paymentMode)) {
+      errors.push(`Invalid payment mode: ${paymentMode}. Allowed modes: ${allowedPaymentModes.join(', ')}`);
+    }
+  }
+
+  // Description validation (if provided)
+  if (description !== undefined && description !== null) {
+    if (typeof description !== 'string') {
+      errors.push('Description must be a string');
+    } else if (description.trim().length > 1000) {
+      errors.push('Description must be less than 1000 characters');
+    }
+  }
+
+  // Check if at least one field is provided for update
+  if (expenseType === undefined && amount === undefined && paymentMode === undefined && description === undefined) {
+    errors.push('At least one field must be provided for update');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
 export {
   validateUserSignup,
   validateUserSignin,
@@ -454,5 +562,7 @@ export {
   validateHotelManagerAssignment,
   validateAssignmentStatus,
   validateGuestRecordData,
-  validateGuestRecordUpdate
+  validateGuestRecordUpdate,
+  validateExpenseData,
+  validateExpenseUpdate
 }; 
