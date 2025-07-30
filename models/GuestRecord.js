@@ -148,6 +148,7 @@ const GuestRecord = sequelize.define('GuestRecord', {
   hooks: {
     beforeValidate: async (guestRecord) => {
       const today = new Date().toISOString().split('T')[0];
+      console.log("guestRecord1",guestRecord);
       
       // Auto-populate checkin_date when checkin_time is provided but date is not
       if (guestRecord.checkinTime && !guestRecord.checkinDate) {
@@ -160,36 +161,23 @@ const GuestRecord = sequelize.define('GuestRecord', {
         guestRecord.checkoutDate = today;
       }
       
-      // Validate checkout date/time is after checkin date/time
-      if (guestRecord.checkinDate && guestRecord.checkoutDate && 
-          guestRecord.checkinTime && guestRecord.checkoutTime) {
-        const checkinDateTime = new Date(`${guestRecord.checkinDate}T${guestRecord.checkinTime}`);
-        const checkoutDateTime = new Date(`${guestRecord.checkoutDate}T${guestRecord.checkoutTime}`);
-        
-        if (checkoutDateTime <= checkinDateTime) {
-          throw new Error('Check-out date/time must be after check-in date/time');
-        }
-      }
+     
     },
+
     beforeCreate: async (guestRecord) => {
-      // Calculate bill and pending amounts
-      calculateAmounts(guestRecord);
+      // Generate serial number if not provided
+      if (!guestRecord.serialNo) {
+        const lastRecord = await GuestRecord.findOne({
+          order: [['serialNo', 'DESC']]
+        });
+        guestRecord.serialNo = lastRecord ? lastRecord.serialNo + 1 : 1;
+      }
+      
+      
     },
-    beforeUpdate: async (guestRecord) => {
-      // Calculate bill and pending amounts
-      calculateAmounts(guestRecord);
-    }
+    
   }
 });
 
-// Helper function to calculate amounts
-function calculateAmounts(guestRecord) {
-  const rent = parseFloat(guestRecord.rent) || 0;
-  const food = parseFloat(guestRecord.food) || 0;
-  const advancePayment = parseFloat(guestRecord.advancePayment) || 0;
-
-  guestRecord.bill = rent + food;
-  guestRecord.pending = Math.max(0, guestRecord.bill - advancePayment);
-}
 
 export default GuestRecord;

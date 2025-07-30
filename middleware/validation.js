@@ -413,7 +413,7 @@ const validateGuestRecordUpdate = (req, res, next) => {
   }
 
    // Payment mode validation (now expects a string)
-   const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'digital_wallet'];
+   const allowedModes = ['card', 'cash', 'upi', 'bank_transfer', 'to_harsh'];
    if (!paymentMode || typeof paymentMode !== 'string') {
      errors.push('Payment mode must be a non-empty string');
    } else if (!allowedModes.includes(paymentMode)) {

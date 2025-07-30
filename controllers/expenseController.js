@@ -495,17 +495,22 @@ export const getExpensesByHotel = async (req, res) => {
       whereClause.paymentMode = paymentMode;
     }
 
-    // Filter by date range (default to current month if no dates provided)
+    // Filter by date range
     if (startDate && endDate) {
-      whereClause.createdAt = {
+      // Both start and end date present
+      whereClause.createdAt = { 
         [Op.between]: [new Date(startDate), new Date(endDate)]
+      };
+    } else if (startDate && !endDate) {
+      // Only start date present
+      whereClause.createdAt = {
+        [Op.gte]: new Date(startDate)
       };
     } else {
       // Default to current month
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      
       whereClause.createdAt = {
         [Op.between]: [startOfMonth, endOfMonth]
       };

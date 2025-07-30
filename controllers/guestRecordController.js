@@ -18,6 +18,8 @@ export const createGuestRecord = async (req, res) => {
       bill
     } = req.body;
 
+    console.log("guestRecord6", req.body);
+
     const userId = req.user.id;
     const userRole = req.user.role;
 
@@ -67,15 +69,19 @@ export const createGuestRecord = async (req, res) => {
       advancePayment: advancePayment || null,
       rent,
       food: food || null,
-      bill 
+      bill
     };
 
-    // Only add checkoutTime if it is provided
+    // If checkoutTime is provided, set checkoutTime and populate checkoutDate with today's date
     if (checkoutTime) {
       guestData.checkoutTime = checkoutTime;
+      // Populate checkoutDate with today's date in YYYY-MM-DD format
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      guestData.checkoutDate = `${yyyy}-${mm}-${dd}`;
     }
-
-   
 
     // Create guest record
     const guestRecord = await GuestRecord.create(guestData);
@@ -97,7 +103,7 @@ export const createGuestRecord = async (req, res) => {
 
   } catch (error) {
     console.error('Create guest record error:', error);
-    
+
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
         success: false,
@@ -348,6 +354,7 @@ export const updateGuestRecord = async (req, res) => {
     const updateData = req.body;
     const userId = req.user.id;
     const userRole = req.user.role;
+    console.log("guestRecord5", updateData);
 
     // Find the guest record
     const guestRecord = await GuestRecord.findByPk(id);
@@ -388,6 +395,15 @@ export const updateGuestRecord = async (req, res) => {
     delete updateData.hotelId;
     delete updateData.serialNo;
 
+    // If checkoutTime is present in update, set checkoutDate to today's date
+    if (updateData.hasOwnProperty('checkoutTime') && updateData.checkoutTime) {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      updateData.checkoutDate = `${yyyy}-${mm}-${dd}`;
+    }
+
     // Update the record
     await guestRecord.update(updateData);
 
@@ -408,7 +424,7 @@ export const updateGuestRecord = async (req, res) => {
 
   } catch (error) {
     console.error('Update guest record error:', error);
-    
+
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
         success: false,
