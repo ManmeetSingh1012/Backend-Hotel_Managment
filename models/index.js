@@ -3,7 +3,10 @@ import User from './User.js';
 import Hotel from './Hotel.js';
 import HotelManager from './HotelManager.js';
 import GuestRecord from './GuestRecord.js';
-
+import Expense from './Expense.js';
+import GuestTransaction from './GuestTransaction.js';
+import GuestExpense from './GuestExpense.js';
+import PaymentMode from './PaymentMode.js';
 // Define associations
 // Hotel belongs to User (createdBy relationship)
 Hotel.belongsTo(User, {
@@ -67,11 +70,70 @@ Hotel.hasMany(GuestRecord, {
   as: 'guestRecords'
 });
 
+GuestRecord.hasMany(GuestTransaction, {
+  foreignKey: 'bookingId',
+  as: 'transactions'
+});
+
+
+GuestTransaction.belongsTo(GuestRecord, {
+  foreignKey: 'bookingId',
+  as: 'booking'
+});
+
+// GuestExpense associations
+GuestExpense.belongsTo(GuestRecord, {
+  foreignKey: 'bookingId',
+  as: 'guestRecord'
+});
+
+GuestRecord.hasMany(GuestExpense, {
+  foreignKey: 'bookingId',
+  as: 'expenses'
+});
+
+// PaymentMode associations
+PaymentMode.belongsTo(User, {
+  foreignKey: 'createdBy',
+  as: 'creator'
+});
+
+User.hasMany(PaymentMode, {
+  foreignKey: 'createdBy',
+  as: 'createdPaymentModes'
+});
+
+// GuestTransaction belongs to PaymentMode
+GuestTransaction.belongsTo(PaymentMode, {
+  foreignKey: 'paymentModeId',
+  as: 'paymentMode'
+});
+
+PaymentMode.hasMany(GuestTransaction, {
+  foreignKey: 'paymentModeId',
+  as: 'transactions'
+});
+
+// Expense associations
+Expense.belongsTo(Hotel, {
+  foreignKey: 'hotelId',
+  as: 'hotel'
+});
+
+Hotel.hasMany(Expense, {
+  foreignKey: 'hotelId',
+  as: 'expenses'
+});
+
 // Export models and sequelize instance
 export {
   sequelize,
   User,
   Hotel,
   HotelManager,
-  GuestRecord
+  GuestRecord,
+  Expense,
+  GuestTransaction,
+  GuestExpense,
+  PaymentMode
 }; 

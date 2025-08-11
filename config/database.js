@@ -57,6 +57,16 @@ const getDatabaseConfig = () => {
 // Create Sequelize instance
 const sequelize = new Sequelize(getDatabaseConfig());
 
+// Function to create a Sequelize instance for a specific database
+const createDatabaseInstance = (databaseName) => {
+  if (!databaseName) {
+    throw new Error('Database name is required');
+  }
+  
+  const config = getDatabaseConfig(databaseName);
+  return new Sequelize(config);
+};
+
 // Test database connection
 const testConnection = async () => {
   try {
@@ -70,17 +80,54 @@ const testConnection = async () => {
 }
 
 // Sync database (create tables if they don't exist)
-const syncDatabase = async () => {
+// Parameters:
+// - tableName: string (optional) - specific table to sync, if not provided syncs all tables
+// - options: object (optional) - sync options like { alter: true, force: false }
+const syncDatabase = async (tableName = null, options = { alter: true }) => {
   try {
-    await sequelize.sync({ alter: true });
-    console.log('✅ Database synchronized successfully.');
+    const dbName = sequelize.config.database;
+    
+    if (tableName) {
+      // Sync specific table
+      console.log(`🔄 Syncing specific table: ${tableName} in database: ${dbName}`);
+      
+      // Import models to get the specific table model
+      const { User, Hotel, HotelManager, GuestRecord, Expense, GuestTransaction, GuestExpense, PaymentMode } = await import('../models/index.js');
+      
+      // Map table names to models
+      const modelMap = {
+        'users': User,
+        'hotels': Hotel,
+        'hotel_managers': HotelManager,
+        'guest_records': GuestRecord,
+        'expenses': Expense,
+        'guest_transactions': GuestTransaction,
+        'guest_expenses': GuestExpense,
+        'payment_modes': PaymentMode
+      };
+      
+      const model = modelMap[tableName.toLowerCase()];
+      if (!model) {
+        throw new Error(`Table '${tableName}' not found. Available tables: ${Object.keys(modelMap).join(', ')}`);
+      }
+      
+      await model.sync(options);
+      console.log(`✅ Table '${tableName}' synchronized successfully.`);
+    } else {
+      // Sync all tables
+      console.log(`🔄 Syncing all tables in database: ${dbName}`);
+      await sequelize.sync(options);
+      console.log(`✅ All tables in database '${dbName}' synchronized successfully.`);
+    }
   } catch (error) {
     console.error('❌ Error synchronizing database:', error);
+    throw error;
   }
 };
 
 export {
   sequelize,
+  createDatabaseInstance,
   testConnection,
   syncDatabase
 }; 

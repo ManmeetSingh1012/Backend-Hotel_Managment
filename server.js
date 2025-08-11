@@ -24,9 +24,7 @@ app.use(cookieParser());
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
+    
     "https://www.checkinsuite.in",
     "https://www.checkinsuite.in/"
   ],
@@ -45,10 +43,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Import routes
 import authRoutes from './routes/auth.js';
-
 import hotelRoutes from './routes/hotelRoutes.js';
 import hotelManagerRoutes from './routes/hotelManagerRoutes.js';
 import guestRecordRoutes from './routes/guestRecordRoutes.js';
+import expenseRoutes from './routes/expenseRoutes.js';
+import paymentModeRoutes from './routes/paymentModeRoutes.js';
 
 // Test route to verify server is working
 app.get('/api/test', (req, res) => {
@@ -74,6 +73,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/hotels', hotelRoutes);
 app.use('/api/hotel-managers', hotelManagerRoutes);
 app.use('/api/guest-records', guestRecordRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/payment-modes', paymentModeRoutes);
 
 // Root route
 app.get('/', (req, res) => {
@@ -87,7 +88,9 @@ app.get('/', (req, res) => {
    
       hotels: '/api/hotels',
       hotelManagers: '/api/hotel-managers',
-      guestRecords: '/api/guest-records'
+      guestRecords: '/api/guest-records',
+      expenses: '/api/expenses',
+      paymentModes: '/api/payment-modes'
     }
   });
 });
@@ -114,12 +117,11 @@ app.use('*', (req, res) => {
 // Initialize database and start server
 const initializeServer = async () => {
   try {
-    // Test database connection
+   
     await testConnection();
-    
-    // Sync database (create tables if they don't exist)
-    //await syncDatabase();
-    
+  
+    //await syncDatabase("guest_expenses");
+
     // Start server
     app.listen(PORT, () => {
       console.log(`🚀 Hotel PMS Backend server is running on port ${PORT}`);

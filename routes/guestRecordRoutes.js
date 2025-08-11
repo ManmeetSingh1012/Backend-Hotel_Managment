@@ -1,14 +1,12 @@
 import express from 'express';
 import {
   createGuestRecord,
-  getAllGuestRecords,
-  getGuestRecordById,
   updateGuestRecord,
   deleteGuestRecord,
   searchGuestRecords,
   getGuestRecordsByDateRange,
   getGuestRecordsByHotel,
-  getGuestRecordStats
+
 } from '../controllers/guestRecordController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
 import { checkManagerHotelAccess } from '../middleware/hotelAccess.js';
@@ -21,12 +19,6 @@ router.use(authenticateToken);
 
 // Create a new guest record (managers and admins only)
 router.post('/', authorizeRole('manager', 'admin'), validateGuestRecordData, createGuestRecord);
-
-// Get all guest records with filters (managers and admins only)
-router.get('/', authorizeRole('manager', 'admin'), getAllGuestRecords);
-
-// Get guest record by ID (managers and admins only)
-router.get('/:id', authorizeRole('manager', 'admin'), getGuestRecordById);
 
 // Update guest record (managers and admins only)
 router.put('/:id', authorizeRole('manager', 'admin'), validateGuestRecordUpdate, updateGuestRecord);
@@ -41,9 +33,7 @@ router.get('/search', authorizeRole('manager', 'admin'), searchGuestRecords);
 router.get('/date-range', authorizeRole('manager', 'admin'), getGuestRecordsByDateRange);
 
 // Get guest records by hotel (managers and admins only)
-router.get('/hotel/:hotelId', authorizeRole('manager', 'admin'), checkManagerHotelAccess, getGuestRecordsByHotel);
+router.get('/:hotelId', authorizeRole('manager', 'admin'), checkManagerHotelAccess, getGuestRecordsByHotel);
 
-// Get guest record statistics (managers and admins only)
-router.get('/stats', authorizeRole('manager', 'admin'), getGuestRecordStats);
 
 export default router; 
