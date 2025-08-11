@@ -51,14 +51,15 @@ export const createHotel = async (req, res) => {
   }
 };
 
-// Get all hotels (admin sees all, manager sees assigned only)
+// Get all hotels (admin sees only hotels they created, manager sees assigned only)
 export const getAllHotels = async (req, res) => {
   try {
     let hotels;
 
     if (req.user.role === 'admin') {
-      // Admin can see all hotels
+      // Admin can only see hotels they created
       hotels = await Hotel.findAll({
+        where: { createdBy: req.user.id },
         include: [
           {
             model: User,
@@ -111,73 +112,6 @@ export const getAllHotels = async (req, res) => {
   }
 };
 
-// Get hotel by ID with proper authorization
-export const getHotelById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    let hotel;
-
-    if (req.user.role === 'admin') {
-      // Admin can access any hotel
-      hotel = await Hotel.findByPk(id, {
-        include: [
-          {
-            model: User,
-            as: 'creator',
-            attributes: ['id', 'name', 'email']
-          },
-          {
-            model: User,
-            as: 'managers',
-            attributes: ['id', 'name', 'email'],
-            through: { attributes: [] }
-          }
-        ]
-      });
-    } else {
-      // Manager can only access hotels they are assigned to
-      hotel = await Hotel.findOne({
-        where: { id },
-        include: [
-          {
-            model: User,
-            as: 'creator',
-            attributes: ['id', 'name', 'email']
-          },
-          {
-            model: User,
-            as: 'managers',
-            attributes: ['id', 'name', 'email'],
-            through: { attributes: [] },
-            where: { id: req.user.id }
-          }
-        ]
-      });
-    }
-
-    if (!hotel) {
-      return res.status(404).json({
-        success: false,
-        error: 'Hotel not found',
-        message: 'Hotel not found or you do not have access to it'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Hotel retrieved successfully',
-      data: hotel
-    });
-  } catch (error) {
-    console.error('Get hotel by ID error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve hotel'
-    });
-  }
-};
 
 // Update hotel (admin only)
 export const updateHotel = async (req, res) => {

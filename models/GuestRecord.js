@@ -37,7 +37,10 @@ const GuestRecord = sequelize.define('GuestRecord', {
     allowNull: false,
     validate: {
       notEmpty: true,
-      is: /^[\+]?[1-9][\d]{0,15}$/
+      is: {
+        args: /^\d{10}$/,
+        msg: 'Phone number must be exactly 10 digits'
+      }
     }
   },
   roomNo: {
@@ -45,100 +48,45 @@ const GuestRecord = sequelize.define('GuestRecord', {
     allowNull: false,
     validate: {
       notEmpty: true,
-      len: [1, 20]
+      len: [2, 20]
     }
   },
   checkinDate: {
     type: DataTypes.DATEONLY,
-    allowNull: true,
-    // Remove defaultValue to allow explicit null checks
-    validate: {
-      isDate: true
-    }
+    allowNull: true
   },
   checkinTime: {
     type: DataTypes.TIME,
-    allowNull: false,
-    validate: {
-      notNull: true
-    }
+    allowNull: false
   },
   checkoutDate: {
     type: DataTypes.DATEONLY,
-    allowNull: true,
-    // Remove defaultValue to allow explicit null checks
-    validate: {
-      isDate: true
-    }
+    allowNull: true
   },
   checkoutTime: {
     type: DataTypes.TIME,
     allowNull: true
   },
-  paymentMode: {
-    type: DataTypes.ENUM('card', 'cash', 'upi', 'bank_transfer', 'to_harsh'),
-    allowNull: false,
-    validate: {
-      notNull: true,
-      isIn: {
-        args: [['card', 'cash', 'upi', 'bank_transfer', 'to_harsh']],
-        msg: 'Payment mode must be one of: card, cash, upi, bank_transfer, to_harsh'
-      }
-    }
-  },
-  advancePayment: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true,
-    defaultValue: 0,
-    validate: {
-      min: 0,
-      isDecimal: true
-    }
-  },
   rent: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     validate: {
-      min: 0,
-      isDecimal: true,
-      notNull: true
-    }
-  },
-  food: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true, // Fixed typo: was 'ture'
-    defaultValue: 0,
-    validate: {
-      min: 0,
-      isDecimal: true
+      notEmpty: true,
+      min: 0
     }
   },
   bill: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     validate: {
-      min: 0,
-      isDecimal: true,
-      notNull: true
-    }
-  },
-  pending: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true,
-    defaultValue: 0,
-    validate: {
-      min: 0,
-      isDecimal: true
+      notEmpty: true,
+      min: 0
     }
   },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,
-    defaultValue: DataTypes.NOW,
-    validate: {
-      notNull: true,
-      isDate: true
-    }
+    defaultValue: DataTypes.NOW
   }
 }, {
   tableName: 'guest_records',

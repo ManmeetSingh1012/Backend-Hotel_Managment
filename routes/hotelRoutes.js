@@ -4,7 +4,6 @@ import { validateHotelData } from '../middleware/validation.js';
 import {
   createHotel,
   getAllHotels,
-  getHotelById,
   updateHotel,
   deleteHotel,
   assignManager,
@@ -26,8 +25,7 @@ router.post('/',
 // GET /api/hotels - Get all hotels (admin sees all, manager sees assigned only)
 router.get('/', getAllHotels);
 
-// GET /api/hotels/:id - Get specific hotel with authorization
-router.get('/:id', getHotelById);
+
 
 // PUT /api/hotels/:id - Update hotel (admin only)
 router.put('/:id',
