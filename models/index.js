@@ -7,6 +7,7 @@ import Expense from './Expense.js';
 import GuestTransaction from './GuestTransaction.js';
 import GuestExpense from './GuestExpense.js';
 import PaymentMode from './PaymentMode.js';
+import ExpenseMode from './ExpenseMode.js';
 // Define associations
 // Hotel belongs to User (createdBy relationship)
 Hotel.belongsTo(User, {
@@ -125,6 +126,19 @@ Hotel.hasMany(Expense, {
   as: 'expenses'
 });
 
+// ExpenseMode associations
+
+
+ExpenseMode.belongsTo(User, {
+  foreignKey: 'createdBy',
+  as: 'creator'
+});
+
+User.hasMany(ExpenseMode, {
+  foreignKey: 'createdBy',
+  as: 'createdExpenseModes'
+});
+
 // Export models and sequelize instance
 export {
   sequelize,
@@ -135,5 +149,6 @@ export {
   Expense,
   GuestTransaction,
   GuestExpense,
-  PaymentMode
+  PaymentMode,
+  ExpenseMode
 }; 
