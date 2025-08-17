@@ -276,10 +276,7 @@ const validateGuestRecordData = (req, res, next) => {
     }
   }
 
-  // Monetary values validation
-  if (advancePayment !== undefined && (isNaN(advancePayment) || parseFloat(advancePayment) < 0)) {
-    errors.push('Advance payment must be a non-negative number');
-  }
+
 
   if (rent === undefined || rent === null || isNaN(rent) || parseFloat(rent) < 0) {
     errors.push('Rent must be a non-negative number and is required');
@@ -601,6 +598,31 @@ const validatePaymentModeData = (req, res, next) => {
   next();
 };
 
+// Validate expense mode data
+const validateExpenseModeData = (req, res, next) => {
+  const { expenseMode } = req.body;
+  const errors = [];
+
+  // Expense mode validation
+  if (!expenseMode || expenseMode.trim().length === 0) {
+    errors.push('Expense mode is required');
+  } else if (expenseMode.trim().length < 2) {
+    errors.push('Expense mode must be at least 2 characters');
+  } else if (expenseMode.trim().length > 100) {
+    errors.push('Expense mode must be less than 100 characters');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
 export {
   validateUserSignup,
   validateUserSignin,
@@ -613,5 +635,6 @@ export {
   validateGuestRecordUpdate,
   validateExpenseData,
   validateExpenseUpdate,
-  validatePaymentModeData
+  validatePaymentModeData,
+  validateExpenseModeData
 }; 

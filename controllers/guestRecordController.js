@@ -95,6 +95,7 @@ export const createGuestRecord = async (req, res) => {
 
       // Create payment transaction if payment mode, type, and amount are provided
   
+      if(advancePayment){
         await GuestTransaction.create({
           bookingId: guestRecord?.id,
           paymentType: 'advance',
@@ -102,7 +103,7 @@ export const createGuestRecord = async (req, res) => {
           amount: advancePayment,
           
         }, { transaction: t });
-      
+      }
 
       return guestRecord;
     });
