@@ -14,7 +14,8 @@ export const createGuestRecord = async (req, res) => {
       paymentId,
       advancePayment,
       rent,
-      bill
+      bill,
+      gstApplicable
     } = req.body;
 
  
@@ -80,7 +81,8 @@ export const createGuestRecord = async (req, res) => {
       roomNo,
       checkinTime,
       rent,
-      bill
+      bill,
+      gstApplicable
     };
 
  

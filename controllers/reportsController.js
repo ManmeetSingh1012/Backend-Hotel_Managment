@@ -7,7 +7,7 @@ import { Op } from 'sequelize';
 export const getPaymentModeReport = async (req, res) => {
     try {
       const { hotelId } = req.params;
-  
+      const userId = req.user.id;
       // Validate required parameters
       if (!hotelId) {
         return res.status(400).json({
@@ -31,9 +31,10 @@ export const getPaymentModeReport = async (req, res) => {
       console.log('Today:', todayStart.toISOString(), 'to', todayEnd.toISOString());
       console.log('Month:', monthStart.toISOString(), 'to', monthEnd.toISOString());
   
-            // First, get all payment modes
+            // First, get all payment modes created by the current user
       const allPaymentModes = await PaymentMode.findAll({
         attributes: ['id', 'paymentMode'],
+        where: { createdBy: userId },
         raw: true
       });
 
@@ -58,6 +59,7 @@ export const getPaymentModeReport = async (req, res) => {
             model: PaymentMode,
             as: 'paymentMode',
             attributes: [],
+            where: { createdBy: userId },
             required: true
           }
         ],
@@ -92,6 +94,7 @@ export const getPaymentModeReport = async (req, res) => {
             model: PaymentMode,
             as: 'paymentMode',
             attributes: [],
+            where: { createdBy: userId },
             required: true
           }
         ],

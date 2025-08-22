@@ -222,6 +222,7 @@ const validateGuestRecordData = (req, res, next) => {
     checkinTime,
     paymentId,
     advancePayment,
+    gstApplicable,
     rent,
     bill
   } = req.body;
@@ -285,6 +286,10 @@ const validateGuestRecordData = (req, res, next) => {
   if (bill !== undefined && (isNaN(bill) || parseFloat(bill) < 0)) {
     errors.push('Bill must be a non-negative number');
   }
+
+  if (gstApplicable === undefined || gstApplicable === null || typeof gstApplicable !== 'boolean') {
+    errors.push('GST applicable must be a boolean and is required');
+  } 
 
   if (errors.length > 0) {
     return res.status(400).json({
@@ -379,15 +384,16 @@ const validateGuestRecordUpdate = (req, res, next) => {
     if (checkoutDateTime <= checkinDateTime) {
       errors.push('Check-out date/time must be after check-in date/time');
     }
-  } else if (!checkinDate && !checkoutDate && checkinTime && checkoutTime) {
-    // If no dates are provided but both times are, compare times assuming same day
-    const [checkinHour, checkinMin] = checkinTime.split(':').map(Number);
-    const [checkoutHour, checkoutMin] = checkoutTime.split(':').map(Number);
+  } 
+  // else if (!checkinDate && !checkoutDate && checkinTime && checkoutTime) {
+  //   // If no dates are provided but both times are, compare times assuming same day
+  //   const [checkinHour, checkinMin] = checkinTime.split(':').map(Number);
+  //   const [checkoutHour, checkoutMin] = checkoutTime.split(':').map(Number);
     
-    if (checkoutHour < checkinHour || (checkoutHour === checkinHour && checkoutMin <= checkinMin)) {
-      errors.push('Check-out time must be after check-in time');
-    }
-  }
+  //   if (checkoutHour < checkinHour || (checkoutHour === checkinHour && checkoutMin <= checkinMin)) {
+  //     errors.push('Check-out time must be after check-in time');
+  //   }
+  // }
 
   // Payment ID validation (UUID format, if provided)
   if (paymentId !== undefined && paymentId !== null && paymentId !== '') {
