@@ -1,4 +1,4 @@
-import { GuestRecord, Hotel, HotelManager, GuestTransaction, GuestExpense, PaymentMode, sequelize } from '../models/index.js';
+import { GuestRecord, Hotel, HotelManager, GuestTransaction, GuestExpense, PaymentMode, Menu, GuestFoodOrder, sequelize } from '../models/index.js';
 import { Op } from 'sequelize';
 import { convertNestedDecimalFields, convertDecimalFields } from '../utils/decimalConverter.js';
 
@@ -305,33 +305,61 @@ export const createGuestRecord = async (req, res) => {
 export const updateGuestRecord = async (req, res) => {
   try {
     const { id } = req.params;
+    const { filter } = req.query;
     const {
-      hotelId,
+      // guest info
       guestName,
       phoneNo,
       roomNo,
       checkinTime,
+      rent,
+      // checkout info
       checkoutTime,
-      paymentId, // This will be used as paymentModeId
+      // payment info
+      paymentId,
       paymentType,
       paymentAmount,
-      rent,
+      // food info
+      expenseType,
       amount,
-      bill,
-      expenseType, // New field for expense type
       ...otherData
     } = req.body;
     
-    const updateData = {
-      guestName,
-      phoneNo,
-      roomNo,
-      checkinTime,
-      checkoutTime,
-      rent,
-      bill,
-      ...otherData
-    };
+    let updateData = {};
+    
+    // Build updateData based on filter
+    switch (filter) {
+      case 'guest-info':
+        // Only update guest information fields
+        if (guestName !== undefined) updateData.guestName = guestName;
+        if (phoneNo !== undefined) updateData.phoneNo = phoneNo;
+        if (roomNo !== undefined) updateData.roomNo = roomNo;
+        if (checkinTime !== undefined) updateData.checkinTime = checkinTime;
+        if (rent !== undefined) updateData.rent = rent;
+        break;
+        
+      case 'checkout':
+        // Only update checkout fields
+        if (checkoutTime !== undefined) updateData.checkoutTime = checkoutTime;
+        break;
+        
+      case 'payment-info':
+        // No guest record fields to update for payment-info
+        // Payment handling is done separately in transaction logic
+        break;
+        
+      case 'food':
+        // No guest record fields to update for food
+        // Food handling is done separately in expense logic
+        break;
+        
+      default:
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid filter',
+          message: 'Invalid filter. Allowed filters: guest-info, checkout, payment-info, food'
+        });
+    }
     
     const userId = req.user.id;
     const userRole = req.user.role;
@@ -339,6 +367,7 @@ export const updateGuestRecord = async (req, res) => {
       guestId: id,
       userId,
       userRole,
+      filter,
       requestData: req.body
     });
 
@@ -377,7 +406,7 @@ export const updateGuestRecord = async (req, res) => {
       });
     }
 
-    // Prevent updating hotelId and serialNo
+    // Prevent updating hotelId and serialNo (these should never be in updateData anyway with filters)
     delete updateData.hotelId;
     delete updateData.serialNo;
 
@@ -417,19 +446,22 @@ export const updateGuestRecord = async (req, res) => {
     const today = new Date();
     const todayDate = today.toISOString().split('T')[0];
     
-    console.log(`Processing update for guest ${id} on date: ${todayDate}`);
+    console.log(`Processing update for guest ${id} on date: ${todayDate} with filter: ${filter}`);
 
     // Use transaction to ensure data consistency
     const result = await sequelize.transaction(async (t) => {
       try {
-        // Update the guest record
-        await guestRecord.update(updateData, { transaction: t });
+        // Update the guest record only if there are fields to update
+        if (Object.keys(updateData).length > 0) {
+          await guestRecord.update(updateData, { transaction: t });
+          console.log(`Updated guest record fields: ${Object.keys(updateData).join(', ')}`);
+        }
 
         let transactionUpdated = false;
         let expenseUpdated = false;
 
-        // Handle payment transaction - always create/update when payment details are provided
-        if (paymentId && paymentType && paymentAmount && parseFloat(paymentAmount) > 0) {
+        // Handle payment transaction - only when filter is payment-info and payment details are provided
+        if (filter === 'payment-info' && paymentId && paymentType && paymentAmount && parseFloat(paymentAmount) > 0) {
           // Check if a transaction with same payment type exists today
           const existingTransaction = await GuestTransaction.findOne({
             where: {
@@ -464,13 +496,13 @@ export const updateGuestRecord = async (req, res) => {
           }
         }
 
-        // Handle food expense - create/update food expense when expenseType is food
-        if (expenseType === 'food' && amount && parseFloat(amount) > 0) {
+        // Handle food expense - only when filter is food and expense details are provided
+        if (filter === 'food' && expenseType && amount && parseFloat(amount) > 0) {
           // Check if a food expense exists today
           const existingFoodExpense = await GuestExpense.findOne({
             where: {
               bookingId: guestRecord.id,
-              expenseType: 'food',
+              expenseType: expenseType,
               createdAt: {
                 [Op.gte]: new Date(todayDate + ' 00:00:00'),
                 [Op.lt]: new Date(todayDate + ' 23:59:59')
@@ -486,15 +518,15 @@ export const updateGuestRecord = async (req, res) => {
               amount: newFoodAmount
             }, { transaction: t });
             expenseUpdated = true;
-            console.log(`Updated existing food expense for guest ${guestRecord.id}, new total: ${newFoodAmount}`);
+            console.log(`Updated existing ${expenseType} expense for guest ${guestRecord.id}, new total: ${newFoodAmount}`);
           } else {
             // Create new food expense
             await GuestExpense.create({
               bookingId: guestRecord.id,
-              expenseType: 'food',
+              expenseType: expenseType,
               amount: amount
             }, { transaction: t });
-            console.log(`Created new food expense for guest ${guestRecord.id}, amount: ${amount}`);
+            console.log(`Created new ${expenseType} expense for guest ${guestRecord.id}, amount: ${amount}`);
           }
         }
 
@@ -759,16 +791,16 @@ export const updateGuestRecord = async (req, res) => {
       pendingAmount: pendingAmount
     });
 
-    // Prepare response message based on what was updated
-    let message = 'Guest record updated successfully';
+    // Prepare response message based on what was updated and filter
+    let message = `Guest record updated successfully (${filter})`;
     if (result.transactionUpdated) {
       message += ', existing transaction updated';
     }
     if (result.expenseUpdated) {
-      message += ', existing food expense updated';
+      message += ', existing expense updated';
     }
 
-    console.log(`Guest record update completed successfully for guest ${id}. Message: ${message}`);
+    console.log(`Guest record update completed successfully for guest ${id} with filter ${filter}. Message: ${message}`);
 
     res.json({
       success: true,
@@ -1558,6 +1590,470 @@ export const getGuestRecordsByHotel = async (req, res) => {
       success: false,
       error: 'Internal server error',
       message: 'Failed to retrieve guest records'
+    });
+  }
+};
+
+// Add food expense with multiple items
+export const addFoodExpense = async (req, res) => {
+  try {
+    const { items } = req.body;
+    const { bookingId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Find the guest record to verify it exists and get hotel info
+    const guestRecord = await GuestRecord.findByPk(bookingId, {
+      include: [{
+        model: Hotel,
+        as: 'hotel',
+        attributes: ['id', 'name']
+      }]
+    });
+
+    if (!guestRecord) {
+      return res.status(404).json({
+        success: false,
+        error: 'Guest record not found',
+        message: 'The specified booking ID does not exist'
+      });
+    }
+
+    // Check authorization - user must have access to the hotel
+    if (userRole === 'manager') {
+      const assignment = await HotelManager.findOne({
+        where: {
+          managerId: userId,
+          hotelId: guestRecord.hotelId,
+          status: 'active'
+        }
+      });
+
+      if (!assignment) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied',
+          message: 'You do not have access to this hotel'
+        });
+      }
+    } else if (userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied',
+        message: 'Only managers and admins can add food expenses'
+      });
+    }
+
+    // Fetch all menu items at once to validate they exist and get prices
+    const menuIds = items.map(item => item.menuId);
+    const menuItems = await Menu.findAll({
+      where: {
+        id: { [Op.in]: menuIds }
+      }
+    });
+
+    // Create a map for quick lookup
+    const menuMap = {};
+    menuItems.forEach(menu => {
+      menuMap[menu.id] = menu;
+    });
+
+    // Validate all menu items exist and calculate total amount
+    let totalAmount = 0;
+    const calculatedItems = [];
+
+    for (const item of items) {
+      const menu = menuMap[item.menuId];
+      if (!menu) {
+        return res.status(404).json({
+          success: false,
+          error: 'Menu item not found',
+          message: `Menu item with ID ${item.menuId} does not exist`
+        });
+      }
+
+      // Get price based on portion type
+      let pricePerItem;
+      if (item.portionType === 'half') {
+        if (!menu.halfPlatePrice) {
+          return res.status(400).json({
+            success: false,
+            error: 'Half plate not available',
+            message: `Half plate is not available for menu item: ${menu.name}`
+          });
+        }
+        pricePerItem = parseFloat(menu.halfPlatePrice);
+      } else {
+        pricePerItem = parseFloat(menu.fullPlatePrice);
+      }
+
+      const itemTotal = pricePerItem * parseInt(item.quantity);
+      totalAmount += itemTotal;
+
+      calculatedItems.push({
+        menuId: item.menuId,
+        portionType: item.portionType,
+        quantity: parseInt(item.quantity),
+        price: itemTotal,
+        menu: menu
+      });
+    }
+
+    // Use transaction to ensure data consistency
+    const result = await sequelize.transaction(async (t) => {
+      // Create the GuestExpense record
+      const guestExpense = await GuestExpense.create({
+        bookingId: bookingId,
+        expenseType: 'food',
+        amount: totalAmount
+      }, { transaction: t });
+
+      // Create all GuestFoodOrder records
+      const foodOrders = await Promise.all(
+        calculatedItems.map(item =>
+          GuestFoodOrder.create({
+            guestExpenseId: guestExpense.id,
+            menuId: item.menuId,
+            portionType: item.portionType,
+            quantity: item.quantity,
+            price: item.price
+          }, { transaction: t })
+        )
+      );
+
+      return { guestExpense, foodOrders };
+    });
+
+    // Fetch the created expense with all food orders and menu details
+    const createdExpense = await GuestExpense.findByPk(result.guestExpense.id, {
+      include: [
+        {
+          model: GuestRecord,
+          as: 'guestRecord',
+          attributes: ['id', 'guestName', 'roomNo'],
+          include: [{
+            model: Hotel,
+            as: 'hotel',
+            attributes: ['id', 'name']
+          }]
+        },
+        {
+          model: GuestFoodOrder,
+          as: 'foodOrders',
+          include: [{
+            model: Menu,
+            as: 'menu',
+            attributes: ['id', 'name', 'halfPlatePrice', 'fullPlatePrice']
+          }]
+        }
+      ]
+    });
+
+    // Convert decimal fields for response
+    const processedResponse = convertNestedDecimalFields({
+      id: createdExpense.id,
+      bookingId: createdExpense.bookingId,
+      expenseType: createdExpense.expenseType,
+      amount: createdExpense.amount,
+      createdAt: createdExpense.createdAt,
+      updatedAt: createdExpense.updatedAt,
+      guestRecord: createdExpense.guestRecord ? {
+        id: createdExpense.guestRecord.id,
+        guestName: createdExpense.guestRecord.guestName,
+        roomNo: createdExpense.guestRecord.roomNo,
+        hotel: createdExpense.guestRecord.hotel
+      } : null,
+      foodOrders: createdExpense.foodOrders.map(order => ({
+        id: order.id,
+        menuId: order.menuId,
+        portionType: order.portionType,
+        quantity: order.quantity,
+        price: order.price,
+        menu: order.menu ? {
+          id: order.menu.id,
+          name: order.menu.name,
+          halfPlatePrice: order.menu.halfPlatePrice,
+          fullPlatePrice: order.menu.fullPlatePrice
+        } : null
+      }))
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Food expense added successfully',
+      data: {
+        expense: processedResponse
+      }
+    });
+
+  } catch (error) {
+    console.error('Add food expense error:', error);
+
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        message: error.errors.map(err => err.message).join(', ')
+      });
+    }
+
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Reference error',
+        message: 'One or more referenced records do not exist'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'Failed to add food expense'
+    });
+  }
+};
+
+// Update food expense with new items
+export const updateFoodExpense = async (req, res) => {
+  try {
+    const { items } = req.body;
+    const { expenseId } = req.params;
+
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Find the expense record with its guest record and hotel info
+    const existingExpense = await GuestExpense.findByPk(expenseId, {
+      include: [
+        {
+          model: GuestRecord,
+          as: 'guestRecord',
+          include: [{
+            model: Hotel,
+            as: 'hotel',
+            attributes: ['id', 'name']
+          }]
+        },
+        {
+          model: GuestFoodOrder,
+          as: 'foodOrders'
+        }
+      ]
+    });
+
+    if (!existingExpense) {
+      return res.status(404).json({
+        success: false,
+        error: 'Expense not found',
+        message: 'The specified expense ID does not exist'
+      });
+    }
+
+    // Verify this is a food expense
+    if (existingExpense.expenseType !== 'food') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid expense type',
+        message: 'This function can only update food expenses'
+      });
+    }
+
+    // Check authorization - user must have access to the hotel
+    if (userRole === 'manager') {
+      const assignment = await HotelManager.findOne({
+        where: {
+          managerId: userId,
+          hotelId: existingExpense.guestRecord.hotelId,
+          status: 'active'
+        }
+      });
+
+      if (!assignment) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied',
+          message: 'You do not have access to this hotel'
+        });
+      }
+    } else if (userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied',
+        message: 'Only managers and admins can update food expenses'
+      });
+    }
+
+    // Fetch all menu items at once to validate they exist and get prices
+    const menuIds = items.map(item => item.menuId);
+    const menuItems = await Menu.findAll({
+      where: {
+        id: { [Op.in]: menuIds }
+      }
+    });
+
+    // Create a map for quick lookup
+    const menuMap = {};
+    menuItems.forEach(menu => {
+      menuMap[menu.id] = menu;
+    });
+
+    // Validate all menu items exist and calculate new total amount
+    let totalAmount = 0;
+    const calculatedItems = [];
+
+    for (const item of items) {
+      const menu = menuMap[item.menuId];
+      if (!menu) {
+        return res.status(404).json({
+          success: false,
+          error: 'Menu item not found',
+          message: `Menu item with ID ${item.menuId} does not exist`
+        });
+      }
+
+      // Get price based on portion type
+      let pricePerItem;
+      if (item.portionType === 'half') {
+        if (!menu.halfPlatePrice) {
+          return res.status(400).json({
+            success: false,
+            error: 'Half plate not available',
+            message: `Half plate is not available for menu item: ${menu.name}`
+          });
+        }
+        pricePerItem = parseFloat(menu.halfPlatePrice);
+      } else {
+        pricePerItem = parseFloat(menu.fullPlatePrice);
+      }
+
+      const itemTotal = pricePerItem * parseInt(item.quantity);
+      totalAmount += itemTotal;
+
+      calculatedItems.push({
+        menuId: item.menuId,
+        portionType: item.portionType,
+        quantity: parseInt(item.quantity),
+        price: itemTotal,
+        menu: menu
+      });
+    }
+
+    // Use transaction to ensure data consistency
+    const result = await sequelize.transaction(async (t) => {
+      // Delete all existing food order entries
+      await GuestFoodOrder.destroy({
+        where: {
+          guestExpenseId: expenseId
+        },
+        transaction: t
+      });
+
+      // Update the expense amount
+      await existingExpense.update({
+        amount: totalAmount
+      }, { transaction: t });
+
+      // Create new food order entries
+      const foodOrders = await Promise.all(
+        calculatedItems.map(item =>
+          GuestFoodOrder.create({
+            guestExpenseId: expenseId,
+            menuId: item.menuId,
+            portionType: item.portionType,
+            quantity: item.quantity,
+            price: item.price
+          }, { transaction: t })
+        )
+      );
+
+      return { updatedExpense: existingExpense, foodOrders };
+    });
+
+    // Fetch the updated expense with all food orders and menu details
+    const updatedExpense = await GuestExpense.findByPk(expenseId, {
+      include: [
+        {
+          model: GuestRecord,
+          as: 'guestRecord',
+          attributes: ['id', 'guestName', 'roomNo'],
+          include: [{
+            model: Hotel,
+            as: 'hotel',
+            attributes: ['id', 'name']
+          }]
+        },
+        {
+          model: GuestFoodOrder,
+          as: 'foodOrders',
+          include: [{
+            model: Menu,
+            as: 'menu',
+            attributes: ['id', 'name', 'halfPlatePrice', 'fullPlatePrice']
+          }]
+        }
+      ]
+    });
+
+    // Convert decimal fields for response
+    const processedResponse = convertNestedDecimalFields({
+      id: updatedExpense.id,
+      bookingId: updatedExpense.bookingId,
+      expenseType: updatedExpense.expenseType,
+      amount: updatedExpense.amount,
+      createdAt: updatedExpense.createdAt,
+      updatedAt: updatedExpense.updatedAt,
+      guestRecord: updatedExpense.guestRecord ? {
+        id: updatedExpense.guestRecord.id,
+        guestName: updatedExpense.guestRecord.guestName,
+        roomNo: updatedExpense.guestRecord.roomNo,
+        hotel: updatedExpense.guestRecord.hotel
+      } : null,
+      foodOrders: updatedExpense.foodOrders.map(order => ({
+        id: order.id,
+        menuId: order.menuId,
+        portionType: order.portionType,
+        quantity: order.quantity,
+        price: order.price,
+        menu: order.menu ? {
+          id: order.menu.id,
+          name: order.menu.name,
+          halfPlatePrice: order.menu.halfPlatePrice,
+          fullPlatePrice: order.menu.fullPlatePrice
+        } : null
+      }))
+    });
+
+    res.json({
+      success: true,
+      message: 'Food expense updated successfully',
+      data: {
+        expense: processedResponse
+      }
+    });
+
+  } catch (error) {
+    console.error('Update food expense error:', error);
+
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        message: error.errors.map(err => err.message).join(', ')
+      });
+    }
+
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Reference error',
+        message: 'One or more referenced records do not exist'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'Failed to update food expense'
     });
   }
 };

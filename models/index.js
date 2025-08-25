@@ -8,6 +8,8 @@ import GuestTransaction from './GuestTransaction.js';
 import GuestExpense from './GuestExpense.js';
 import PaymentMode from './PaymentMode.js';
 import ExpenseMode from './ExpenseMode.js';
+import Menu from './Menu.js';
+import GuestFoodOrder from './GuestFoodOrder.js';
 // Define associations
 // Hotel belongs to User (createdBy relationship)
 Hotel.belongsTo(User, {
@@ -139,6 +141,38 @@ User.hasMany(ExpenseMode, {
   as: 'createdExpenseModes'
 });
 
+// Menu associations
+Menu.belongsTo(User, {
+  foreignKey: 'createdBy',
+  as: 'creator'
+});
+
+User.hasMany(Menu, {
+  foreignKey: 'createdBy',
+  as: 'createdMenus'
+});
+
+// GuestFoodOrder associations
+GuestFoodOrder.belongsTo(GuestExpense, {
+  foreignKey: 'guestExpenseId',
+  as: 'guestExpense'
+});
+
+GuestExpense.hasMany(GuestFoodOrder, {
+  foreignKey: 'guestExpenseId',
+  as: 'foodOrders'
+});
+
+GuestFoodOrder.belongsTo(Menu, {
+  foreignKey: 'menuId',
+  as: 'menu'
+});
+
+Menu.hasMany(GuestFoodOrder, {
+  foreignKey: 'menuId',
+  as: 'foodOrders'
+});
+
 // Export models and sequelize instance
 export {
   sequelize,
@@ -150,5 +184,7 @@ export {
   GuestTransaction,
   GuestExpense,
   PaymentMode,
-  ExpenseMode
+  ExpenseMode,
+  Menu,
+  GuestFoodOrder
 }; 
