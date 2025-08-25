@@ -6,11 +6,12 @@ import {
   searchGuestRecords,
   getGuestRecordsByDateRange,
   getGuestRecordsByHotel,
-
+  addFoodExpense,
+  updateFoodExpense
 } from '../controllers/guestRecordController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
 import { checkManagerHotelAccess } from '../middleware/hotelAccess.js';
-import { validateGuestRecordData, validateGuestRecordUpdate } from '../middleware/validation.js';
+import { validateGuestRecordData, validateGuestRecordUpdate, validateAddFoodExpense, validateUpdateFoodExpense } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -22,6 +23,9 @@ router.post('/', authorizeRole('manager', 'admin'), validateGuestRecordData, cre
 
 // Update guest record (managers and admins only)
 router.put('/:id', authorizeRole('manager', 'admin'), validateGuestRecordUpdate, updateGuestRecord);
+
+// Update guest record (managers and admins only)
+//router.put('/updatefood/:id', authorizeRole('manager', 'admin'), validateGuestRecordUpdate, updateGuestRecord);
 
 // Delete guest record (managers and admins only)
 router.delete('/:id', authorizeRole('manager', 'admin'), deleteGuestRecord);
@@ -35,5 +39,10 @@ router.get('/date-range', authorizeRole('manager', 'admin'), getGuestRecordsByDa
 // Get guest records by hotel (managers and admins only)
 router.get('/:hotelId', authorizeRole('manager', 'admin'), checkManagerHotelAccess, getGuestRecordsByHotel);
 
+// Add food expense (managers and admins only)
+router.post('/food-expense/add/:bookingId', authorizeRole('manager', 'admin'), validateAddFoodExpense, addFoodExpense);
+
+// Update food expense (managers and admins only)
+router.put('/food-expense/update/:expenseId', authorizeRole('manager', 'admin'), validateUpdateFoodExpense, updateFoodExpense);
 
 export default router; 

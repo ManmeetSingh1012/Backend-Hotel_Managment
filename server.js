@@ -50,6 +50,7 @@ import expenseRoutes from './routes/expenseRoutes.js';
 import paymentModeRoutes from './routes/paymentModeRoutes.js';
 import expenseModeRoutes from './routes/expenseModeRoute.js';
 import reportsRoutes from './routes/reportsRoutes.js';
+import menuRoutes from './routes/menuRoute.js';
 
 // Test route to verify server is working
 app.get('/api/test', (req, res) => {
@@ -79,7 +80,7 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/payment-modes', paymentModeRoutes);
 app.use('/api/expense-modes', expenseModeRoutes);
 app.use('/api/reports', reportsRoutes);
-
+app.use('/api/menu', menuRoutes);
 // Root route
 app.get('/', (req, res) => {
   res.json({
@@ -96,7 +97,8 @@ app.get('/', (req, res) => {
       expenses: '/api/expenses',
       paymentModes: '/api/payment-modes',
       expenseModes: '/api/expense-modes',
-      reports: '/api/reports'
+      reports: '/api/reports',
+      menus: '/api/menus'
     }
   });
 });
@@ -126,7 +128,7 @@ const initializeServer = async () => {
    
     await testConnection();
   
-    //await syncDatabase("expense_modes");
+    await syncDatabase("menus");
 
     // Start server
     app.listen(PORT, () => {

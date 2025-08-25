@@ -222,6 +222,7 @@ const validateGuestRecordData = (req, res, next) => {
     checkinTime,
     paymentId,
     advancePayment,
+    gstApplicable,
     rent,
     bill
   } = req.body;
@@ -286,6 +287,10 @@ const validateGuestRecordData = (req, res, next) => {
     errors.push('Bill must be a non-negative number');
   }
 
+  if (gstApplicable === undefined || gstApplicable === null || typeof gstApplicable !== 'boolean') {
+    errors.push('GST applicable must be a boolean and is required');
+  } 
+
   if (errors.length > 0) {
     return res.status(400).json({
       success: false,
@@ -299,159 +304,123 @@ const validateGuestRecordData = (req, res, next) => {
 
 // Validate guest record update data (allows partial updates)
 const validateGuestRecordUpdate = (req, res, next) => {
+  const { filter } = req.query;
   const {
+    // guest info
     guestName,
     phoneNo,
     roomNo,
-    checkinDate,
     checkinTime,
-    checkoutDate,
+    rent,
+    // checkout info
     checkoutTime,
+    // payment info
     paymentId,
     paymentType,
     paymentAmount,
+    // food info
     expenseType,
-    foodAmount,
-    advancePayment,
-    rent,
-    food,
-    bill
+    amount
   } = req.body;
+
   const errors = [];
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  // Guest name validation (if provided)
-  if (guestName !== undefined) {
-    if (!guestName || guestName.trim().length < 2 || guestName.trim().length > 200) {
-      errors.push('Guest name must be between 2 and 200 characters');
-    }
-  }
+  switch (filter) {
+    case 'guest-info':
+      // Validate guest information fields
+      if (guestName !== undefined) {
+        if (!guestName || guestName.trim().length < 2 || guestName.trim().length > 200) {
+          errors.push('Guest name must be between 2 and 200 characters');
+        }
+      }
 
-  // Phone number validation (if provided)
-  if (phoneNo !== undefined) {
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-    if (!phoneNo || !phoneRegex.test(phoneNo)) {
-      errors.push('Please provide a valid phone number');
-    }
-  }
+      if (phoneNo !== undefined) {
+        const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+        if (!phoneNo || !phoneRegex.test(phoneNo)) {
+          errors.push('Please provide a valid phone number');
+        }
+      }
 
-  // Room number validation (if provided)
-  if (roomNo !== undefined) {
-    if (!roomNo || roomNo.trim().length === 0 || roomNo.trim().length > 20) {
-      errors.push('Room number is required and must be less than 20 characters');
-    }
-  }
+      if (roomNo !== undefined) {
+        if (!roomNo || roomNo.trim().length === 0 || roomNo.trim().length > 20) {
+          errors.push('Room number is required and must be less than 20 characters');
+        }
+      }
 
-  // Check-in time validation (if provided)
-  if (checkinTime !== undefined) {
-    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
-    if (!checkinTime || !timeRegex.test(checkinTime)) {
-      errors.push('Check-in time must be in valid time format (HH:MM or HH:MM:SS)');
-    }
-  }
+      if (checkinTime !== undefined) {
+        const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
+        if (!checkinTime || !timeRegex.test(checkinTime)) {
+          errors.push('Check-in time must be in valid time format (HH:MM or HH:MM:SS)');
+        }
+      }
 
-  // Check-out time validation (if provided)
-  if (checkoutTime !== undefined) {
-    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
-    if (!timeRegex.test(checkoutTime)) {
-      errors.push('Check-out time must be in valid time format (HH:MM or HH:MM:SS)');
-    }
-  }
+      if (rent !== undefined) {
+        if (isNaN(rent) || parseFloat(rent) < 0) {
+          errors.push('Rent must be a non-negative number');
+        }
+      }
+      break;
 
-  // Check-in date validation (if provided)
-  if (checkinDate !== undefined) {
-    if (!checkinDate || !Date.parse(checkinDate)) {
-      errors.push('Valid check-in date is required');
-    }
-  }
+    case 'checkout':
+      // Validate checkout fields
+      if (checkoutTime !== undefined) {
+        const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
+        if (!timeRegex.test(checkoutTime)) {
+          errors.push('Check-out time must be in valid time format (HH:MM or HH:MM:SS)');
+        }
+      }
+      break;
 
-  // Check-out date validation (if provided)
-  if (checkoutDate !== undefined) {
-    if (!checkoutDate || !Date.parse(checkoutDate)) {
-      errors.push('Valid check-out date is required');
-    }
-  }
+    case 'payment-info':
+      // Validate payment information fields
+      if (paymentId !== undefined && paymentId !== null && paymentId !== '') {
+        if (typeof paymentId !== 'string' || !uuidRegex.test(paymentId.trim())) {
+          errors.push('Valid payment mode ID (UUID) is required');
+        }
+      }
 
-  // Check-out must be after check-in (if both dates and times are provided)
-  if (checkinDate && checkoutDate && checkinTime && checkoutTime) {
-    const checkinDateTime = new Date(`${checkinDate}T${checkinTime}`);
-    const checkoutDateTime = new Date(`${checkoutDate}T${checkoutTime}`);
-    
-    if (checkoutDateTime <= checkinDateTime) {
-      errors.push('Check-out date/time must be after check-in date/time');
-    }
-  } else if (!checkinDate && !checkoutDate && checkinTime && checkoutTime) {
-    // If no dates are provided but both times are, compare times assuming same day
-    const [checkinHour, checkinMin] = checkinTime.split(':').map(Number);
-    const [checkoutHour, checkoutMin] = checkoutTime.split(':').map(Number);
-    
-    if (checkoutHour < checkinHour || (checkoutHour === checkinHour && checkoutMin <= checkinMin)) {
-      errors.push('Check-out time must be after check-in time');
-    }
-  }
+      if (paymentType !== undefined && paymentType !== null && paymentType !== '') {
+        const allowedPaymentTypes = ['advance', 'partial', 'final'];
+        if (!allowedPaymentTypes.includes(paymentType)) {
+          errors.push(`Invalid payment type: ${paymentType}. Allowed types: ${allowedPaymentTypes.join(', ')}`);
+        }
+      }
 
-  // Payment ID validation (UUID format, if provided)
-  if (paymentId !== undefined && paymentId !== null && paymentId !== '') {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (typeof paymentId !== 'string' || !uuidRegex.test(paymentId.trim())) {
-      errors.push('Valid payment ID (UUID) is required');
-    }
-  }
+      if (paymentAmount !== undefined && paymentAmount !== null && paymentAmount !== '') {
+        if (isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0) {
+          errors.push('Payment amount must be a positive number');
+        }
+      }
 
-  // Payment type validation (if provided)
-  if (paymentType !== undefined && paymentType !== null && paymentType !== '') {
-    const allowedPaymentTypes = ['advance', 'partial', 'final'];
-    if (!allowedPaymentTypes.includes(paymentType)) {
-      errors.push(`Invalid payment type: ${paymentType}. Allowed types: ${allowedPaymentTypes.join(', ')}`);
-    }
-  }
+      // Validate required fields for payment
+      if (paymentAmount && !paymentId) {
+        errors.push('Payment mode ID is required when payment amount is provided');
+      }
 
-  // Payment amount validation (if provided)
-  if (paymentAmount !== undefined && paymentAmount !== null && paymentAmount !== '') {
-    if (isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0) {
-      errors.push('Payment amount must be a positive number');
-    }
-  }
+      if (paymentAmount && !paymentType) {
+        errors.push('Payment type is required when payment amount is provided');
+      }
+      break;
 
-  // Expense type validation (if provided)
-  if (expenseType !== undefined && expenseType !== null && expenseType !== '') {
-    const allowedExpenseTypes = ['food', 'laundry', 'others'];
-    if (!allowedExpenseTypes.includes(expenseType)) {
-      errors.push(`Invalid expense type: ${expenseType}. Allowed types: ${allowedExpenseTypes.join(', ')}`);
-    }
-  }
+    case 'food':
+      // Validate food fields
+      if (amount !== undefined && amount !== null && amount !== '') {
+        if (isNaN(parseFloat(amount)) || parseFloat(amount) < 0) {
+          errors.push('Food amount must be a non-negative number');
+        }
+      }
+      if (expenseType !== undefined && expenseType !== null && expenseType !== '') {
+        const allowedExpenseTypes = ['food', 'laundry', 'others'];
+        if (!allowedExpenseTypes.includes(expenseType)) {
+          errors.push(`Invalid expense type: ${expenseType}. Allowed types: ${allowedExpenseTypes.join(', ')}`);
+        }
+      }
+      break;
 
-  // Food amount validation (if provided)
-  if (foodAmount !== undefined && foodAmount !== null && foodAmount !== '') {
-    if (isNaN(parseFloat(foodAmount)) || parseFloat(foodAmount) < 0) {
-      errors.push('Food amount must be a non-negative number');
-    }
-  }
-
-  // Monetary values validation (if provided)
-  if (advancePayment !== undefined && (isNaN(advancePayment) || parseFloat(advancePayment) < 0)) {
-    errors.push('Advance payment must be a non-negative number');
-  }
-
-  if (rent !== undefined && (isNaN(rent) || parseFloat(rent) < 0)) {
-    errors.push('Rent must be a non-negative number');
-  }
-
-  if (food !== undefined && (isNaN(food) || parseFloat(food) < 0)) {
-    errors.push('Food must be a non-negative number');
-  }
-
-  if (bill !== undefined && (isNaN(bill) || parseFloat(bill) < 0)) {
-    errors.push('Bill must be a non-negative number');
-  }
-
-  // Validate paymentId if paymentAmount is provided
-  if (paymentAmount && !paymentId) {
-    errors.push('Payment ID is required when payment amount is provided');
-  }
-
-  // Validate paymentType if paymentAmount is provided
-  if (paymentAmount && !paymentType) {
-    errors.push('Payment type is required when payment amount is provided');
+    default:
+      errors.push('Invalid filter. Allowed filters: guest-info, checkout, payment-info, food');
+      break;
   }
 
   if (errors.length > 0) {
@@ -623,6 +592,135 @@ const validateExpenseModeData = (req, res, next) => {
   next();
 };
 
+// Validate food data
+const validateMenuData = (req, res, next) => {
+  const { name, halfPlatePrice, fullPlatePrice, description } = req.body;
+  const errors = [];
+
+  if (!name || name.trim().length === 0) {
+    errors.push('Menu name is required');
+  }
+
+
+
+  if (!fullPlatePrice || isNaN(fullPlatePrice) || fullPlatePrice < 0) {
+    errors.push('Full plate price must be a non-negative number');
+  }
+
+  if (description !== undefined && description !== null) {
+    if (typeof description !== 'string') {
+      errors.push('Description must be a string');
+    } else if (description.trim().length > 1000) {
+      errors.push('Description must be less than 1000 characters');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+// Validate food expense data for adding
+const validateAddFoodExpense = (req, res, next) => {
+  const { items } = req.body;
+  const { bookingId } = req.params;
+  const errors = [];
+
+  // UUID validation regex
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // Booking ID validation
+  if (!bookingId || !uuidRegex.test(bookingId)) {
+    errors.push('Valid booking ID (UUID) is required');
+  }
+
+  // Items validation
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    errors.push('Items must be a non-empty array');
+  } else {
+    items.forEach((item, index) => {
+      // Menu ID validation
+      if (!item.menuId || !uuidRegex.test(item.menuId)) {
+        errors.push(`Item ${index + 1}: Valid menu ID (UUID) is required`);
+      }
+
+      // Portion type validation
+      if (!item.portionType || !['half', 'full'].includes(item.portionType)) {
+        errors.push(`Item ${index + 1}: Portion type must be either 'half' or 'full'`);
+      }
+
+      // Quantity validation
+      if (!item.quantity || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1) {
+        errors.push(`Item ${index + 1}: Quantity must be a positive integer`);
+      }
+    });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+// Validate food expense data for updating
+const validateUpdateFoodExpense = (req, res, next) => {
+  const {  items } = req.body;
+
+  const { expenseId } = req.params;
+  const errors = [];
+
+  // UUID validation regex
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // Expense ID validation
+  if (!expenseId || !uuidRegex.test(expenseId)) {
+    errors.push('Valid expense ID (UUID) is required');
+  }
+
+  // Items validation
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    errors.push('Items must be a non-empty array');
+  } else {
+    items.forEach((item, index) => {
+      // Menu ID validation
+      if (!item.menuId || !uuidRegex.test(item.menuId)) {
+        errors.push(`Item ${index + 1}: Valid menu ID (UUID) is required`);
+      }
+
+      // Portion type validation
+      if (!item.portionType || !['half', 'full'].includes(item.portionType)) {
+        errors.push(`Item ${index + 1}: Portion type must be either 'half' or 'full'`);
+      }
+
+      // Quantity validation
+      if (!item.quantity || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1) {
+        errors.push(`Item ${index + 1}: Quantity must be a positive integer`);
+      }
+    });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
 export {
   validateUserSignup,
   validateUserSignin,
@@ -636,5 +734,9 @@ export {
   validateExpenseData,
   validateExpenseUpdate,
   validatePaymentModeData,
-  validateExpenseModeData
+  validateExpenseModeData,
+  validateMenuData,
+  validateAddFoodExpense,
+  validateUpdateFoodExpense
 }; 
+

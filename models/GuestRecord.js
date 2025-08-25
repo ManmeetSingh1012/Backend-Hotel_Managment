@@ -87,6 +87,11 @@ const GuestRecord = sequelize.define('GuestRecord', {
     type: DataTypes.DATEONLY,
     allowNull: false,
     defaultValue: DataTypes.NOW
+  },
+  gstApplicable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
   }
 }, {
   tableName: 'guest_records',
