@@ -626,9 +626,37 @@ const validateMenuData = (req, res, next) => {
   next();
 };
 
+// Validate menu search data
+const validateMenuSearch = (req, res, next) => {
+  const { search } = req.query;
+  const errors = [];
+
+  // If search is provided, validate it
+  if (search !== undefined) {
+    if (typeof search !== 'string') {
+      errors.push('Search parameter must be a string');
+    } else if (search.length > 100) {
+      errors.push('Search parameter must be less than 100 characters');
+    } else if (search.trim().length === 0) {
+      // Allow empty search (will return all menus), but convert to undefined
+      req.query.search = undefined;
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
 // Validate food expense data for adding
 const validateAddFoodExpense = (req, res, next) => {
-  const { items } = req.body;
+  const { menuId, portionType, quantity } = req.body;
   const { bookingId } = req.params;
   const errors = [];
 
@@ -640,26 +668,19 @@ const validateAddFoodExpense = (req, res, next) => {
     errors.push('Valid booking ID (UUID) is required');
   }
 
-  // Items validation
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    errors.push('Items must be a non-empty array');
-  } else {
-    items.forEach((item, index) => {
-      // Menu ID validation
-      if (!item.menuId || !uuidRegex.test(item.menuId)) {
-        errors.push(`Item ${index + 1}: Valid menu ID (UUID) is required`);
-      }
+  // Menu ID validation
+  if (!menuId || !uuidRegex.test(menuId)) {
+    errors.push('Valid menu ID (UUID) is required');
+  }
 
-      // Portion type validation
-      if (!item.portionType || !['half', 'full'].includes(item.portionType)) {
-        errors.push(`Item ${index + 1}: Portion type must be either 'half' or 'full'`);
-      }
+  // Portion type validation
+  if (!portionType || !['half', 'full'].includes(portionType)) {
+    errors.push('Portion type must be either "half" or "full"');
+  }
 
-      // Quantity validation
-      if (!item.quantity || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1) {
-        errors.push(`Item ${index + 1}: Quantity must be a positive integer`);
-      }
-    });
+  // Quantity validation
+  if (!quantity || !Number.isInteger(Number(quantity)) || Number(quantity) < 1) {
+    errors.push('Quantity must be a positive integer');
   }
 
   if (errors.length > 0) {
@@ -736,6 +757,7 @@ export {
   validatePaymentModeData,
   validateExpenseModeData,
   validateMenuData,
+  validateMenuSearch,
   validateAddFoodExpense,
   validateUpdateFoodExpense
 }; 

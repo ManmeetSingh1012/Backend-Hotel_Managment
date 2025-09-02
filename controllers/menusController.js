@@ -1,5 +1,6 @@
 import Menu from '../models/Menu.js';
 import { sequelize } from '../config/database.js';
+import { Op } from 'sequelize';
 
 // Create a new menu
 export const createMenu = async (req, res) => {
@@ -235,6 +236,55 @@ export const deleteMenu = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting menu',
+      error: error.message
+    });
+  }
+};
+
+// Search menus by name
+export const searchMenu = async (req, res) => {
+  try {
+    const { search } = req.query;
+    const userId = req.user.id;
+
+    // // If no search query provided, return all menus
+    // if (!search || search.trim() === '') {
+    //   const menus = await Menu.findAll({
+    //     where: { createdBy: userId },
+    //     attributes: ['id', 'name', 'halfPlatePrice', 'fullPlatePrice'],
+    //     order: [['name', 'ASC']]
+    //   });
+
+    //   return res.status(200).json({
+    //     success: true,
+    //     message: 'All menus retrieved successfully',
+    //     data: menus
+    //   });
+    // }
+
+    // Search for menus with name containing the search term (case-insensitive)
+    const menus = await Menu.findAll({
+      where: {
+        createdBy: userId,
+        name: {
+          [Op.iLike]: `%${search.trim()}%` // Case-insensitive partial match
+        }
+      },
+      attributes: ['id', 'name', 'halfPlatePrice', 'fullPlatePrice'],
+      order: [['name', 'ASC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Found ${menus.length} menu(s) matching "${search}"`,
+      data: menus
+    });
+
+  } catch (error) {
+    console.error('Error searching menus:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error searching menus',
       error: error.message
     });
   }

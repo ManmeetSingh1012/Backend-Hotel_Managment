@@ -39,7 +39,7 @@ const GuestFoodOrder = sequelize.define('GuestFoodOrder', {
       defaultValue: 1,
       validate: { min: 1 }
     },
-    price: {
+    unitPrice: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false
     }
@@ -48,6 +48,6 @@ const GuestFoodOrder = sequelize.define('GuestFoodOrder', {
     timestamps: true,
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
-  });
+  }); 
   
   export default GuestFoodOrder;
