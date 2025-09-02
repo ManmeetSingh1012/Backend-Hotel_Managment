@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
-import { validateMenuData } from '../middleware/validation.js';
-import { createMenu , updateMenu , deleteMenu , getMenus , getMenuById } from '../controllers/menusController.js';
+import { validateMenuData, validateMenuSearch } from '../middleware/validation.js';
+import { createMenu , updateMenu , deleteMenu , getMenus , getMenuById, searchMenu } from '../controllers/menusController.js';
 const router = express.Router();
 
 // Apply authentication middleware to all routes
@@ -12,6 +12,9 @@ router.post('/', validateMenuData, createMenu);
 
  // Get all menus
 router.get('/', getMenus);
+
+// Search menus
+router.get('/search', validateMenuSearch, searchMenu);
 
 // Get a specific menu by ID
 router.get('/:id', getMenuById);

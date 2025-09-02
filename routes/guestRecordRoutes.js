@@ -6,9 +6,9 @@ import {
   searchGuestRecords,
   getGuestRecordsByDateRange,
   getGuestRecordsByHotel,
-  addFoodExpense,
-  updateFoodExpense
+ 
 } from '../controllers/guestRecordController.js';
+import { addFoodExpense, updateFoodExpense, getFoodExpenseByBookingId } from '../controllers/guestFoodController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
 import { checkManagerHotelAccess } from '../middleware/hotelAccess.js';
 import { validateGuestRecordData, validateGuestRecordUpdate, validateAddFoodExpense, validateUpdateFoodExpense } from '../middleware/validation.js';
@@ -39,10 +39,14 @@ router.get('/date-range', authorizeRole('manager', 'admin'), getGuestRecordsByDa
 // Get guest records by hotel (managers and admins only)
 router.get('/:hotelId', authorizeRole('manager', 'admin'), checkManagerHotelAccess, getGuestRecordsByHotel);
 
+
+
 // Add food expense (managers and admins only)
 router.post('/food-expense/add/:bookingId', authorizeRole('manager', 'admin'), validateAddFoodExpense, addFoodExpense);
 
 // Update food expense (managers and admins only)
 router.put('/food-expense/update/:expenseId', authorizeRole('manager', 'admin'), validateUpdateFoodExpense, updateFoodExpense);
+
+router.get('/food-expense/get/:bookingId', authorizeRole('manager', 'admin'), getFoodExpenseByBookingId);
 
 export default router; 
