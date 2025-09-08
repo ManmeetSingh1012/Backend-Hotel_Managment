@@ -1,4 +1,4 @@
-import { Expense, Hotel, HotelManager, sequelize } from '../models/index.js';
+import { Expense, Hotel, HotelManager, ExpenseMode, sequelize } from '../models/index.js';
 import { Op } from 'sequelize';
 
 // Create a new expense (manager only for assigned hotels, admin for all)
@@ -6,9 +6,8 @@ export const createExpense = async (req, res) => {
   try {
     const {
       hotelId,
-      expenseType,
+      expenseModeId,
       amount,
-      paymentMode,
       description
     } = req.body;
 
@@ -50,22 +49,38 @@ export const createExpense = async (req, res) => {
       });
     }
 
+    // Verify expense mode exists
+    const expenseMode = await ExpenseMode.findByPk(expenseModeId);
+    if (!expenseMode) {
+      return res.status(404).json({
+        success: false,
+        error: 'Expense mode not found',
+        message: 'The specified expense mode does not exist'
+      });
+    }
+
     // Create expense
     const expense = await Expense.create({
       hotelId,
-      expenseType,
+      expenseModeId,
       amount,
-      paymentMode,
       description
     });
 
-    // Fetch the created expense with hotel details
+    // Fetch the created expense with hotel and expense mode details
     const createdExpense = await Expense.findByPk(expense.id, {
-      include: [{
-        model: Hotel,
-        as: 'hotel',
-        attributes: ['id', 'name']
-      }]
+      include: [
+        {
+          model: Hotel,
+          as: 'hotel',
+          attributes: ['id', 'name']
+        },
+        {
+          model: ExpenseMode,
+          as: 'expenseMode',
+          attributes: ['id', 'expenseMode']
+        }
+      ]
     });
 
     res.status(201).json({
@@ -89,9 +104,8 @@ export const updateExpense = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      expenseType,
+      expenseModeId,
       amount,
-      paymentMode,
       description
     } = req.body;
 
@@ -133,21 +147,39 @@ export const updateExpense = async (req, res) => {
       });
     }
 
+    // Verify expense mode exists if provided
+    if (expenseModeId) {
+      const expenseMode = await ExpenseMode.findByPk(expenseModeId);
+      if (!expenseMode) {
+        return res.status(404).json({
+          success: false,
+          error: 'Expense mode not found',
+          message: 'The specified expense mode does not exist'
+        });
+      }
+    }
+
     // Update expense
     await expense.update({
-      expenseType,
+      expenseModeId,
       amount,
-      paymentMode,
       description
     });
 
-    // Fetch updated expense with hotel details
+    // Fetch updated expense with hotel and expense mode details
     const updatedExpense = await Expense.findByPk(id, {
-      include: [{
-        model: Hotel,
-        as: 'hotel',
-        attributes: ['id', 'name']
-      }]
+      include: [
+        {
+          model: Hotel,
+          as: 'hotel',
+          attributes: ['id', 'name']
+        },
+        {
+          model: ExpenseMode,
+          as: 'expenseMode',
+          attributes: ['id', 'expenseMode']
+        }
+      ]
     });
 
     res.status(200).json({
@@ -233,8 +265,7 @@ export const getExpensesByHotel = async (req, res) => {
     const {
       page = 1,
       limit = 10,
-      expenseType,
-      paymentMode,
+      expenseModeId,
       startDate,
       endDate,
       sortBy = 'createdAt',
@@ -282,14 +313,9 @@ export const getExpensesByHotel = async (req, res) => {
     // Build where clause
     const whereClause = { hotelId };
 
-    // Filter by expense type
-    if (expenseType) {
-      whereClause.expenseType = expenseType;
-    }
-
-    // Filter by payment mode
-    if (paymentMode) {
-      whereClause.paymentMode = paymentMode;
+    // Filter by expense mode
+    if (expenseModeId) {
+      whereClause.expenseModeId = expenseModeId;
     }
 
     // Filter by date range
@@ -318,7 +344,7 @@ export const getExpensesByHotel = async (req, res) => {
     const limitNum = parseInt(limit);
 
     // Validate sort parameters
-    const allowedSortFields = ['createdAt', 'amount', 'expenseType', 'paymentMode'];
+    const allowedSortFields = ['createdAt', 'amount'];
     const allowedSortOrders = ['ASC', 'DESC'];
     
     const finalSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
@@ -327,11 +353,18 @@ export const getExpensesByHotel = async (req, res) => {
     // Get expenses with pagination
     const { count, rows: expenses } = await Expense.findAndCountAll({
       where: whereClause,
-      include: [{
-        model: Hotel,
-        as: 'hotel',
-        attributes: ['id', 'name']
-      }],
+      include: [
+        {
+          model: Hotel,
+          as: 'hotel',
+          attributes: ['id', 'name']
+        },
+        {
+          model: ExpenseMode,
+          as: 'expenseMode',
+          attributes: ['id', 'expenseMode']
+        }
+      ],
       order: [[finalSortBy, finalSortOrder]],
       limit: limitNum,
       offset: offset

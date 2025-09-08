@@ -18,16 +18,15 @@ const Expense = sequelize.define('Expense', {
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
     },
-    expenseType: {
-        type: DataTypes.ENUM('food', 'salary', 'utilities', 'maintenance', 'supplies', 'marketing', 'insurance', 'taxes', 'rent', 'other'),
+    expenseModeId: {
+        type: DataTypes.UUID,
         allowNull: false,
-        validate: {
-            notNull: true,
-            isIn: {
-                args: [['food', 'salary', 'utilities', 'maintenance', 'supplies', 'marketing', 'insurance', 'taxes', 'rent', 'other']],
-                msg: 'Expense type must be one of: food, salary, utilities, maintenance, supplies, marketing, insurance, taxes, rent, other'
-            }
-        }
+        references: {
+            model: 'expense_modes',
+            key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
     },
     amount: {
         type: DataTypes.DECIMAL(10, 2),
@@ -35,17 +34,6 @@ const Expense = sequelize.define('Expense', {
         validate: {
             notEmpty: true,
             min: 0
-        }
-    },
-    paymentMode: {
-        type: DataTypes.ENUM('card', 'cash', 'upi', 'bank_transfer', 'cheque', 'online'),
-        allowNull: false,
-        validate: {
-            notNull: true,
-            isIn: {
-                args: [['card', 'cash', 'upi', 'bank_transfer', 'cheque', 'online']],
-                msg: 'Payment mode must be one of: card, cash, upi, bank_transfer, cheque, online'
-            }
         }
     },
     description: {
