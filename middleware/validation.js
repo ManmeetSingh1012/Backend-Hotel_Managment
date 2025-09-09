@@ -438,7 +438,7 @@ const validateGuestRecordUpdate = (req, res, next) => {
 
 // Validate expense data
 const validateExpenseData = (req, res, next) => {
-  const { hotelId, expenseType, amount, paymentMode, description } = req.body;
+  const { hotelId, expenseModeId, amount, description } = req.body;
   const errors = [];
 
   // Hotel ID validation
@@ -446,25 +446,14 @@ const validateExpenseData = (req, res, next) => {
     errors.push('Hotel ID is required and must be a string');
   }
 
-  // Expense type validation
-  const allowedExpenseTypes = ['food', 'salary', 'utilities', 'maintenance', 'supplies', 'marketing', 'insurance', 'taxes', 'rent', 'other'];
-  if (!expenseType || typeof expenseType !== 'string') {
-    errors.push('Expense type is required and must be a string');
-  } else if (!allowedExpenseTypes.includes(expenseType)) {
-    errors.push(`Invalid expense type: ${expenseType}. Allowed types: ${allowedExpenseTypes.join(', ')}`);
+  // Expense mode ID validation
+  if (!expenseModeId || typeof expenseModeId !== 'string') {
+    errors.push('Expense mode ID is required and must be a string');
   }
 
   // Amount validation
   if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
     errors.push('Amount is required and must be a positive number');
-  }
-
-  // Payment mode validation
-  const allowedPaymentModes = ['card', 'cash', 'upi', 'bank_transfer', 'cheque', 'online'];
-  if (!paymentMode || typeof paymentMode !== 'string') {
-    errors.push('Payment mode is required and must be a string');
-  } else if (!allowedPaymentModes.includes(paymentMode)) {
-    errors.push(`Invalid payment mode: ${paymentMode}. Allowed modes: ${allowedPaymentModes.join(', ')}`);
   }
 
   // Description validation (optional but if provided, validate length)
@@ -489,16 +478,13 @@ const validateExpenseData = (req, res, next) => {
 
 // Validate expense update data
 const validateExpenseUpdate = (req, res, next) => {
-  const { expenseType, amount, paymentMode, description } = req.body;
+  const { expenseModeId, amount, description } = req.body;
   const errors = [];
 
-  // Expense type validation (if provided)
-  if (expenseType !== undefined) {
-    const allowedExpenseTypes = ['food', 'salary', 'utilities', 'maintenance', 'supplies', 'marketing', 'insurance', 'taxes', 'rent', 'other'];
-    if (typeof expenseType !== 'string') {
-      errors.push('Expense type must be a string');
-    } else if (!allowedExpenseTypes.includes(expenseType)) {
-      errors.push(`Invalid expense type: ${expenseType}. Allowed types: ${allowedExpenseTypes.join(', ')}`);
+  // Expense mode ID validation (if provided)
+  if (expenseModeId !== undefined) {
+    if (typeof expenseModeId !== 'string') {
+      errors.push('Expense mode ID must be a string');
     }
   }
 
@@ -506,16 +492,6 @@ const validateExpenseUpdate = (req, res, next) => {
   if (amount !== undefined) {
     if (isNaN(amount) || parseFloat(amount) <= 0) {
       errors.push('Amount must be a positive number');
-    }
-  }
-
-  // Payment mode validation (if provided)
-  if (paymentMode !== undefined) {
-    const allowedPaymentModes = ['card', 'cash', 'upi', 'bank_transfer', 'cheque', 'online'];
-    if (typeof paymentMode !== 'string') {
-      errors.push('Payment mode must be a string');
-    } else if (!allowedPaymentModes.includes(paymentMode)) {
-      errors.push(`Invalid payment mode: ${paymentMode}. Allowed modes: ${allowedPaymentModes.join(', ')}`);
     }
   }
 
@@ -529,7 +505,7 @@ const validateExpenseUpdate = (req, res, next) => {
   }
 
   // Check if at least one field is provided for update
-  if (expenseType === undefined && amount === undefined && paymentMode === undefined && description === undefined) {
+  if (expenseModeId === undefined && amount === undefined && description === undefined) {
     errors.push('At least one field must be provided for update');
   }
 

@@ -128,6 +128,17 @@ Hotel.hasMany(Expense, {
   as: 'expenses'
 });
 
+// Expense belongs to ExpenseMode
+Expense.belongsTo(ExpenseMode, {
+  foreignKey: 'expenseModeId',
+  as: 'expenseMode'
+});
+
+ExpenseMode.hasMany(Expense, {
+  foreignKey: 'expenseModeId',
+  as: 'expenses'
+});
+
 // ExpenseMode associations
 
 
