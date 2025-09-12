@@ -10,6 +10,8 @@ import PaymentMode from './PaymentMode.js';
 import ExpenseMode from './ExpenseMode.js';
 import Menu from './Menu.js';
 import GuestFoodOrder from './GuestFoodOrder.js';
+import HotelRoomCategory from './HotelRoomCategory.js';
+import HotelRoom from './HotelRoom.js';
 // Define associations
 // Hotel belongs to User (createdBy relationship)
 Hotel.belongsTo(User, {
@@ -184,6 +186,38 @@ Menu.hasMany(GuestFoodOrder, {
   as: 'foodOrders'
 });
 
+// HotelRoomCategory associations
+HotelRoomCategory.belongsTo(Hotel, {
+  foreignKey: 'hotelId',
+  as: 'hotel'
+});
+
+Hotel.hasMany(HotelRoomCategory, {
+  foreignKey: 'hotelId',
+  as: 'roomCategories'
+});
+
+// HotelRoom associations
+HotelRoom.belongsTo(Hotel, {
+  foreignKey: 'hotelId',
+  as: 'hotel'
+});
+
+Hotel.hasMany(HotelRoom, {
+  foreignKey: 'hotelId',
+  as: 'rooms'
+});
+
+HotelRoom.belongsTo(HotelRoomCategory, {
+  foreignKey: 'categoryId',
+  as: 'category'
+});
+
+HotelRoomCategory.hasMany(HotelRoom, {
+  foreignKey: 'categoryId',
+  as: 'rooms'
+});
+
 // Export models and sequelize instance
 export {
   sequelize,
@@ -197,5 +231,7 @@ export {
   PaymentMode,
   ExpenseMode,
   Menu,
-  GuestFoodOrder
+  GuestFoodOrder,
+  HotelRoomCategory,
+  HotelRoom
 }; 

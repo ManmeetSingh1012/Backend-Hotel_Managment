@@ -362,7 +362,7 @@ export const getExpensesByHotel = async (req, res) => {
         {
           model: ExpenseMode,
           as: 'expenseMode',
-          attributes: ['id', 'expenseMode']
+          attributes: ['expenseMode']
         }
       ],
       order: [[finalSortBy, finalSortOrder]],

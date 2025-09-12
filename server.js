@@ -51,6 +51,8 @@ import paymentModeRoutes from './routes/paymentModeRoutes.js';
 import expenseModeRoutes from './routes/expenseModeRoute.js';
 import reportsRoutes from './routes/reportsRoutes.js';
 import menuRoutes from './routes/menuRoute.js';
+import hotelRoomRoutes from './routes/hotelRoomsRoute.js';
+import hotelRoomCategoryRoutes from './routes/hotelRoomCategoryRoutes.js';
 
 // Test route to verify server is working
 app.get('/api/test', (req, res) => {
@@ -81,6 +83,8 @@ app.use('/api/payment-modes', paymentModeRoutes);
 app.use('/api/expense-modes', expenseModeRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/menu', menuRoutes);
+app.use('/api/hotel-rooms', hotelRoomRoutes);
+app.use('/api/hotel-room-categories', hotelRoomCategoryRoutes);
 // Root route
 app.get('/', (req, res) => {
   res.json({
@@ -98,7 +102,9 @@ app.get('/', (req, res) => {
       paymentModes: '/api/payment-modes',
       expenseModes: '/api/expense-modes',
       reports: '/api/reports',
-      menus: '/api/menus'
+      menus: '/api/menus',
+      hotelRooms: '/api/hotel-rooms',
+      hotelRoomCategories: '/api/hotel-room-categories'
     }
   });
 });
@@ -128,7 +134,7 @@ const initializeServer = async () => {
    
     await testConnection();
   
-    //await syncDatabase("expenses");
+    await syncDatabase("hotel_rooms");
 
     // Start server
     app.listen(PORT, () => {

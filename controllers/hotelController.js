@@ -1,22 +1,72 @@
-import { Hotel, User, HotelManager, sequelize } from '../models/index.js';
+import { Hotel, User, HotelManager, HotelRoomCategory, HotelRoom, sequelize } from '../models/index.js';
 import { Op } from 'sequelize';
+
+// Helper function to create default room category for a hotel
+const createDefaultRoomCategory = async (hotelId, transaction) => {
+  try {
+    const roomCategory = await HotelRoomCategory.create({
+      categoryName: 'Standard',
+      hotelId: hotelId,
+      roomCategoryPricing: 0 // Default pricing, can be updated later
+    }, { transaction });
+    return roomCategory;
+  } catch (error) {
+    console.error('Error creating default room category:', error);
+    throw error;
+  }
+};
+
+// Helper function to create rooms in batch for a hotel
+const createRoomsInBatch = async (hotelId, categoryId, totalRooms, transaction) => {
+  try {
+    const rooms = [];
+    
+    // Create room data for batch insertion
+    for (let i = 1; i <= totalRooms; i++) {
+      rooms.push({
+        roomNo: i.toString(),
+        hotelId: hotelId,
+        categoryId: categoryId,
+        status: 'empty',
+        currentGuestName: null
+      });
+    }
+    
+    // Use bulkCreate for efficient batch insertion
+    const createdRooms = await HotelRoom.bulkCreate(rooms, { transaction });
+    return createdRooms;
+  } catch (error) {
+    console.error('Error creating rooms in batch:', error);
+    throw error;
+  }
+};
 
 // Create hotel (admin only)
 export const createHotel = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
-    const { name, address, phone,  totalRooms } = req.body;
+    const { name, address, phone, totalRooms } = req.body;
 
     // Create hotel with the current user as creator
     const hotel = await Hotel.create({
       name,
       address,
       phone,
-      
       totalRooms,
       createdBy: req.user.id
-    });
+    }, { transaction });
 
-    // Fetch the created hotel with creator details
+    // Create default room category for the hotel
+    const roomCategory = await createDefaultRoomCategory(hotel.id, transaction);
+
+    // Create rooms in batch (1 to totalRooms)
+    const createdRooms = await createRoomsInBatch(hotel.id, roomCategory.id, totalRooms, transaction);
+
+    // Commit the transaction
+    await transaction.commit();
+
+    // Fetch the created hotel with creator details and room information
     const createdHotel = await Hotel.findByPk(hotel.id, {
       include: [
         {
@@ -33,6 +83,9 @@ export const createHotel = async (req, res) => {
       data: createdHotel
     });
   } catch (error) {
+    // Rollback the transaction in case of error
+    await transaction.rollback();
+    
     console.error('Create hotel error:', error);
     
     if (error.name === 'SequelizeValidationError') {
@@ -46,7 +99,7 @@ export const createHotel = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Internal server error',
-      message: 'Failed to create hotel'
+      message: 'Failed to create hotel with rooms'
     });
   }
 };

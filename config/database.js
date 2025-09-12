@@ -92,7 +92,7 @@ const syncDatabase = async (tableName = null, options = { alter: true }) => {
       console.log(`🔄 Syncing specific table: ${tableName} in database: ${dbName}`);
       
       // Import models to get the specific table model
-      const { User, Hotel, HotelManager, GuestRecord, Expense, GuestTransaction, GuestExpense, PaymentMode, ExpenseMode, Menu, GuestFoodOrder } = await import('../models/index.js');
+      const { User, Hotel, HotelManager, GuestRecord, Expense, GuestTransaction, GuestExpense, PaymentMode, ExpenseMode, Menu, GuestFoodOrder, HotelRoomCategory, HotelRoom } = await import('../models/index.js');
       
       // Map table names to models
       const modelMap = {
@@ -106,7 +106,9 @@ const syncDatabase = async (tableName = null, options = { alter: true }) => {
         'payment_modes': PaymentMode,
         'expense_modes': ExpenseMode,
         'menus': Menu,
-        'guest_food_orders': GuestFoodOrder
+        'guest_food_orders': GuestFoodOrder,
+        'hotel_room_categories': HotelRoomCategory,
+        'hotel_rooms': HotelRoom
       };
       
       const model = modelMap[tableName.toLowerCase()];

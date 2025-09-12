@@ -718,6 +718,156 @@ const validateUpdateFoodExpense = (req, res, next) => {
   next();
 };
 
+// Validate hotel room category data
+const validateHotelRoomCategoryData = (req, res, next) => {
+  const { categoryName, hotelId } = req.body;
+  const errors = [];
+
+  // Category name validation
+  if (!categoryName || categoryName.trim().length < 2 || categoryName.trim().length > 100) {
+    errors.push('Category name must be between 2 and 100 characters');
+  }
+
+  // Hotel ID validation (UUID format)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!hotelId || !uuidRegex.test(hotelId)) {
+    errors.push('Valid hotel ID (UUID) is required');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+// Validate hotel room category update data
+const validateHotelRoomCategoryUpdate = (req, res, next) => {
+  const { categoryName } = req.body;
+  const errors = [];
+
+  // Category name validation (if provided)
+  if (categoryName !== undefined) {
+    if (!categoryName || categoryName.trim().length < 2 || categoryName.trim().length > 100) {
+      errors.push('Category name must be between 2 and 100 characters');
+    }
+  }
+
+  // Check if at least one field is provided for update
+  if (categoryName === undefined) {
+    errors.push('At least one field must be provided for update');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+// Validate hotel room data
+const validateHotelRoomData = (req, res, next) => {
+  const { roomNo, hotelId, currentGuestName, status, categoryId } = req.body;
+  const errors = [];
+
+  // Room number validation
+  if (!roomNo || roomNo.trim().length === 0 || roomNo.trim().length > 20) {
+    errors.push('Room number is required and must be less than 20 characters');
+  }
+
+  // Hotel ID validation (UUID format)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!hotelId || !uuidRegex.test(hotelId)) {
+    errors.push('Valid hotel ID (UUID) is required');
+  }
+
+  // Current guest name validation (optional)
+  if (currentGuestName !== undefined && currentGuestName !== null && currentGuestName !== '') {
+    if (currentGuestName.trim().length > 200) {
+      errors.push('Current guest name must be less than 200 characters');
+    }
+  }
+
+  // Status validation
+  if (status && !['empty', 'occupied', 'cleaning'].includes(status)) {
+    errors.push('Status must be one of: empty, occupied, cleaning');
+  }
+
+  // Category ID validation (UUID format)
+  if (!categoryId || !uuidRegex.test(categoryId)) {
+    errors.push('Valid category ID (UUID) is required');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+// Validate hotel room update data
+const validateHotelRoomUpdate = (req, res, next) => {
+  const { roomNo, currentGuestName, status, categoryId } = req.body;
+  const errors = [];
+
+  // Room number validation (if provided)
+  if (roomNo !== undefined) {
+    if (!roomNo || roomNo.trim().length === 0 || roomNo.trim().length > 20) {
+      errors.push('Room number is required and must be less than 20 characters');
+    }
+  }
+
+  // Current guest name validation (if provided)
+  if (currentGuestName !== undefined && currentGuestName !== null) {
+    if (currentGuestName !== '' && currentGuestName.trim().length > 200) {
+      errors.push('Current guest name must be less than 200 characters');
+    }
+  }
+
+  // Status validation (if provided)
+  if (status !== undefined) {
+    if (!['empty', 'occupied', 'cleaning'].includes(status)) {
+      errors.push('Status must be one of: empty, occupied, cleaning');
+    }
+  }
+
+  // Category ID validation (if provided)
+  if (categoryId !== undefined) {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!categoryId || !uuidRegex.test(categoryId)) {
+      errors.push('Valid category ID (UUID) is required');
+    }
+  }
+
+  // Check if at least one field is provided for update
+  if (roomNo === undefined && currentGuestName === undefined && status === undefined && categoryId === undefined) {
+    errors.push('At least one field must be provided for update');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: errors.join(', ')
+    });
+  }
+
+  next();
+};
+
+
 export {
   validateUserSignup,
   validateUserSignin,
@@ -735,6 +885,10 @@ export {
   validateMenuData,
   validateMenuSearch,
   validateAddFoodExpense,
-  validateUpdateFoodExpense
+  validateUpdateFoodExpense,
+  validateHotelRoomCategoryData,
+  validateHotelRoomCategoryUpdate,
+  validateHotelRoomData,
+  validateHotelRoomUpdate
 }; 
 
