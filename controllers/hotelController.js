@@ -1,3 +1,6 @@
+
+
+
 import { Hotel, User, HotelManager, HotelRoomCategory, HotelRoom, sequelize } from '../models/index.js';
 import { Op } from 'sequelize';
 
@@ -366,3 +369,28 @@ export const removeManager = async (req, res) => {
     });
   }
 }; 
+
+
+// Get hotel by id (admin only)
+export const getHotelById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(id);
+    const hotel = await Hotel.findOne({
+      where: { id: id }
+    });
+    console.log(hotel);
+    res.status(200).json({
+      success: true,
+      message: 'Hotel retrieved successfully',
+      data: hotel
+    });
+  } catch (error) {
+    console.error('Error fetching hotel:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'Failed to fetch hotel'
+    });
+  }
+};

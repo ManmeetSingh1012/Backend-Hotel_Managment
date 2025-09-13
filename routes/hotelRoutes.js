@@ -7,7 +7,8 @@ import {
   updateHotel,
   deleteHotel,
   assignManager,
-  removeManager
+  removeManager,
+  getHotelById
 } from '../controllers/hotelController.js';
 
 const router = express.Router();
@@ -26,13 +27,19 @@ router.post('/',
 router.get('/', getAllHotels);
 
 
+// get hotel by id /api/hotels/:id
+router.get('/:id',
+  authorizeRole('admin'),
+  getHotelById
+);
+
 
 // PUT /api/hotels/:id - Update hotel (admin only)
-router.put('/:id',
-  authorizeRole('admin'),
-  validateHotelData,
-  updateHotel
-);
+  router.put('/:id',
+    authorizeRole('admin'),
+    validateHotelData,
+    updateHotel
+  );
 
 // DELETE /api/hotels/:id - Delete hotel (admin only)
 router.delete('/:id',

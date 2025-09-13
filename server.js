@@ -134,7 +134,7 @@ const initializeServer = async () => {
    
     await testConnection();
   
-    await syncDatabase("hotel_rooms");
+    //await syncDatabase("hotel_rooms");
 
     // Start server
     app.listen(PORT, () => {

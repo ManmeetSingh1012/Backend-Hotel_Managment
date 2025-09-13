@@ -25,7 +25,7 @@ router.post('/',
 );
 
 // GET /api/hotel-rooms/hotel/:hotelId - Get all rooms for a hotel
-router.get('/hotel/:hotelId', getHotelRooms);
+router.get('/:hotelId', getHotelRooms);
 
 // GET /api/hotel-rooms/:id - Get room by ID
 router.get('/:id', getHotelRoomById);
