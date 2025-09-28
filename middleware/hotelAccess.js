@@ -1,4 +1,4 @@
-import { HotelManager, GuestRecord } from '../models/index.js';
+import { HotelManager, GuestRecord } from "../models/index.js";
 
 // Middleware to check if manager has access to specific hotel
 export const checkManagerHotelAccess = async (req, res, next) => {
@@ -8,25 +8,25 @@ export const checkManagerHotelAccess = async (req, res, next) => {
     const userRole = req.user.role;
 
     // Admin has access to all hotels
-    if (userRole === 'admin') {
+    if (userRole === "admin") {
       return next();
     }
 
     // For managers, check if they have active assignment to this hotel
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
 
@@ -36,16 +36,15 @@ export const checkManagerHotelAccess = async (req, res, next) => {
     // Other roles don't have access
     return res.status(403).json({
       success: false,
-      error: 'Access denied',
-      message: 'You do not have permission to access this resource'
+      error: "Access denied",
+      message: "You do not have permission to access this resource",
     });
-
   } catch (error) {
-    console.error('Hotel access middleware error:', error);
+    console.error("Hotel access middleware error:", error);
     return res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Error checking hotel access'
+      error: "Internal server error",
+      message: "Error checking hotel access",
     });
   }
 };
@@ -58,11 +57,11 @@ export const requireManagerAccess = async (req, res, next) => {
     const userRole = req.user.role;
 
     // Only managers can access this
-    if (userRole !== 'manager') {
+    if (userRole !== "manager") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers can perform this operation'
+        error: "Access denied",
+        message: "Only managers can perform this operation",
       });
     }
 
@@ -71,26 +70,25 @@ export const requireManagerAccess = async (req, res, next) => {
       where: {
         managerId: userId,
         hotelId: hotelId,
-        status: 'active'
-      }
+        status: "active",
+      },
     });
 
     if (!assignment) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'You do not have access to this hotel'
+        error: "Access denied",
+        message: "You do not have access to this hotel",
       });
     }
 
     return next();
-
   } catch (error) {
-    console.error('Manager access middleware error:', error);
+    console.error("Manager access middleware error:", error);
     return res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Error checking manager access'
+      error: "Internal server error",
+      message: "Error checking manager access",
     });
   }
 };
@@ -103,19 +101,19 @@ export const checkGuestRecordAccess = async (req, res, next) => {
     const userRole = req.user.role;
 
     // Admin has access to all guest records
-    if (userRole === 'admin') {
+    if (userRole === "admin") {
       return next();
     }
 
     // For managers, first get the guest record to find the hotel ID
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const guestRecord = await GuestRecord.findByPk(bookingId);
-      
+
       if (!guestRecord) {
         return res.status(404).json({
           success: false,
-          error: 'Guest record not found',
-          message: 'The specified booking ID does not exist'
+          error: "Guest record not found",
+          message: "The specified booking ID does not exist",
         });
       }
 
@@ -124,15 +122,15 @@ export const checkGuestRecordAccess = async (req, res, next) => {
         where: {
           managerId: userId,
           hotelId: guestRecord.hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
 
@@ -142,16 +140,15 @@ export const checkGuestRecordAccess = async (req, res, next) => {
     // Other roles don't have access
     return res.status(403).json({
       success: false,
-      error: 'Access denied',
-      message: 'You do not have permission to access this resource'
+      error: "Access denied",
+      message: "You do not have permission to access this resource",
     });
-
   } catch (error) {
-    console.error('Guest record access middleware error:', error);
+    console.error("Guest record access middleware error:", error);
     return res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Error checking guest record access'
+      error: "Internal server error",
+      message: "Error checking guest record access",
     });
   }
-}; 
+};
