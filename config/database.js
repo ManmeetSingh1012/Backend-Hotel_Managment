@@ -1,56 +1,56 @@
-import { Sequelize } from 'sequelize';
-import dotenv from 'dotenv';
+import { Sequelize } from "sequelize";
+import dotenv from "dotenv";
 
 dotenv.config();
 
 // Supabase PostgreSQL connection configuration
 const getDatabaseConfig = () => {
-  console.log('🔗 Attempting to connect to database...');
-  
+  console.log("🔗 Attempting to connect to database...");
+
   if (process.env.DATABASE_URL) {
     // Parse the DATABASE_URL manually to avoid password parsing issues
     const url = new URL(process.env.DATABASE_URL);
-    
+
     return {
       host: url.hostname,
       port: url.port || 5432,
       database: url.pathname.slice(1), // Remove leading slash
       username: url.username,
       password: url.password,
-      dialect: 'postgres',
+      dialect: "postgres",
       dialectOptions: {
-        ssl: false
+        ssl: false,
       },
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      logging: process.env.NODE_ENV === "development" ? console.log : false,
       pool: {
         max: 5,
         min: 0,
         acquire: 30000,
-        idle: 10000
-      }
+        idle: 10000,
+      },
     };
   }
 
   // Default local development configuration
-  console.warn('⚠️  No Supabase database configuration found');
-  
+  console.warn("⚠️  No Supabase database configuration found");
+
   return {
-    host: 'localhost',
+    host: "localhost",
     port: 5432,
-    database: 'postgres',
-    username: 'postgres',
-    password: 'manmeet',
-    dialect: 'postgres',
+    database: "postgres",
+    username: "postgres",
+    password: "manmeet",
+    dialect: "postgres",
     dialectOptions: {
-      ssl: false
+      ssl: false,
     },
     logging: console.log,
     pool: {
       max: 5,
       min: 0,
       acquire: 30000,
-      idle: 10000
-    }
+      idle: 10000,
+    },
   };
 };
 
@@ -60,9 +60,9 @@ const sequelize = new Sequelize(getDatabaseConfig());
 // Function to create a Sequelize instance for a specific database
 const createDatabaseInstance = (databaseName) => {
   if (!databaseName) {
-    throw new Error('Database name is required');
+    throw new Error("Database name is required");
   }
-  
+
   const config = getDatabaseConfig(databaseName);
   return new Sequelize(config);
 };
@@ -71,13 +71,19 @@ const createDatabaseInstance = (databaseName) => {
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✅ Database connection has been established successfully.');
-    console.log(`🔗 Connected to: ${sequelize.config.database || sequelize.config.url?.split('/').pop()}`);
+    console.log("✅ Database connection has been established successfully.");
+    console.log(
+      `🔗 Connected to: ${
+        sequelize.config.database || sequelize.config.url?.split("/").pop()
+      }`
+    );
   } catch (error) {
-    console.error('❌ Unable to connect to the database:', error);
-    console.error('💡 Make sure your Supabase database credentials are correct');
+    console.error("❌ Unable to connect to the database:", error);
+    console.error(
+      "💡 Make sure your Supabase database credentials are correct"
+    );
   }
-}
+};
 
 // Sync database (create tables if they don't exist)
 // Parameters:
@@ -86,53 +92,72 @@ const testConnection = async () => {
 const syncDatabase = async (tableName = null, options = { alter: true }) => {
   try {
     const dbName = sequelize.config.database;
-    
+
     if (tableName) {
       // Sync specific table
-      console.log(`🔄 Syncing specific table: ${tableName} in database: ${dbName}`);
-      
+      console.log(
+        `🔄 Syncing specific table: ${tableName} in database: ${dbName}`
+      );
+
       // Import models to get the specific table model
-      const { User, Hotel, HotelManager, GuestRecord, Expense, GuestTransaction, GuestExpense, PaymentMode, ExpenseMode, Menu, GuestFoodOrder, HotelRoomCategory, HotelRoom } = await import('../models/index.js');
-      
+      const {
+        User,
+        Hotel,
+        HotelManager,
+        GuestRecord,
+        Expense,
+        GuestTransaction,
+        GuestExpense,
+        PaymentMode,
+        ExpenseMode,
+        Menu,
+        GuestFoodOrder,
+        HotelRoomCategory,
+        HotelRoom,
+        GuestPendingPayment,
+      } = await import("../models/index.js");
+
       // Map table names to models
       const modelMap = {
-        'users': User,
-        'hotels': Hotel,
-        'hotel_managers': HotelManager,
-        'guest_records': GuestRecord,
-        'expenses': Expense,
-        'guest_transactions': GuestTransaction,
-        'guest_expenses': GuestExpense,
-        'payment_modes': PaymentMode,
-        'expense_modes': ExpenseMode,
-        'menus': Menu,
-        'guest_food_orders': GuestFoodOrder,
-        'hotel_room_categories': HotelRoomCategory,
-        'hotel_rooms': HotelRoom
+        users: User,
+        hotels: Hotel,
+        hotel_managers: HotelManager,
+        guest_records: GuestRecord,
+        expenses: Expense,
+        guest_transactions: GuestTransaction,
+        guest_expenses: GuestExpense,
+        payment_modes: PaymentMode,
+        expense_modes: ExpenseMode,
+        menus: Menu,
+        guest_food_orders: GuestFoodOrder,
+        hotel_room_categories: HotelRoomCategory,
+        hotel_rooms: HotelRoom,
+        guest_pending_payments: GuestPendingPayment,
       };
-      
+
       const model = modelMap[tableName.toLowerCase()];
       if (!model) {
-        throw new Error(`Table '${tableName}' not found. Available tables: ${Object.keys(modelMap).join(', ')}`);
+        throw new Error(
+          `Table '${tableName}' not found. Available tables: ${Object.keys(
+            modelMap
+          ).join(", ")}`
+        );
       }
-      
+
       await model.sync(options);
       console.log(`✅ Table '${tableName}' synchronized successfully.`);
     } else {
       // Sync all tables
       console.log(`🔄 Syncing all tables in database: ${dbName}`);
       await sequelize.sync(options);
-      console.log(`✅ All tables in database '${dbName}' synchronized successfully.`);
+      console.log(
+        `✅ All tables in database '${dbName}' synchronized successfully.`
+      );
     }
   } catch (error) {
-    console.error('❌ Error synchronizing database:', error);
+    console.error("❌ Error synchronizing database:", error);
     throw error;
   }
 };
 
-export {
-  sequelize,
-  createDatabaseInstance,
-  testConnection,
-  syncDatabase
-}; 
+export { sequelize, createDatabaseInstance, testConnection, syncDatabase };

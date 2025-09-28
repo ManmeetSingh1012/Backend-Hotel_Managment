@@ -1,45 +1,57 @@
-
-
-
-import { Hotel, User, HotelManager, HotelRoomCategory, HotelRoom, sequelize } from '../models/index.js';
-import { Op } from 'sequelize';
+import {
+  Hotel,
+  User,
+  HotelManager,
+  HotelRoomCategory,
+  HotelRoom,
+  sequelize,
+} from "../models/index.js";
+import { Op } from "sequelize";
 
 // Helper function to create default room category for a hotel
 const createDefaultRoomCategory = async (hotelId, transaction) => {
   try {
-    const roomCategory = await HotelRoomCategory.create({
-      categoryName: 'Standard',
-      hotelId: hotelId,
-      roomCategoryPricing: 0 // Default pricing, can be updated later
-    }, { transaction });
+    const roomCategory = await HotelRoomCategory.create(
+      {
+        categoryName: "Standard",
+        hotelId: hotelId,
+        roomCategoryPricing: 1000, // Default pricing, can be updated later
+      },
+      { transaction }
+    );
     return roomCategory;
   } catch (error) {
-    console.error('Error creating default room category:', error);
+    console.error("Error creating default room category:", error);
     throw error;
   }
 };
 
 // Helper function to create rooms in batch for a hotel
-const createRoomsInBatch = async (hotelId, categoryId, totalRooms, transaction) => {
+const createRoomsInBatch = async (
+  hotelId,
+  categoryId,
+  totalRooms,
+  transaction
+) => {
   try {
     const rooms = [];
-    
+
     // Create room data for batch insertion
     for (let i = 1; i <= totalRooms; i++) {
       rooms.push({
         roomNo: i.toString(),
         hotelId: hotelId,
         categoryId: categoryId,
-        status: 'empty',
-        currentGuestName: null
+        status: "ready to occupy",
+        currentGuestName: null,
       });
     }
-    
+
     // Use bulkCreate for efficient batch insertion
     const createdRooms = await HotelRoom.bulkCreate(rooms, { transaction });
     return createdRooms;
   } catch (error) {
-    console.error('Error creating rooms in batch:', error);
+    console.error("Error creating rooms in batch:", error);
     throw error;
   }
 };
@@ -47,24 +59,32 @@ const createRoomsInBatch = async (hotelId, categoryId, totalRooms, transaction) 
 // Create hotel (admin only)
 export const createHotel = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { name, address, phone, totalRooms } = req.body;
 
     // Create hotel with the current user as creator
-    const hotel = await Hotel.create({
-      name,
-      address,
-      phone,
-      totalRooms,
-      createdBy: req.user.id
-    }, { transaction });
+    const hotel = await Hotel.create(
+      {
+        name,
+        address,
+        phone,
+        totalRooms,
+        createdBy: req.user.id,
+      },
+      { transaction }
+    );
 
     // Create default room category for the hotel
     const roomCategory = await createDefaultRoomCategory(hotel.id, transaction);
 
     // Create rooms in batch (1 to totalRooms)
-    const createdRooms = await createRoomsInBatch(hotel.id, roomCategory.id, totalRooms, transaction);
+    const createdRooms = await createRoomsInBatch(
+      hotel.id,
+      roomCategory.id,
+      totalRooms,
+      transaction
+    );
 
     // Commit the transaction
     await transaction.commit();
@@ -74,35 +94,35 @@ export const createHotel = async (req, res) => {
       include: [
         {
           model: User,
-          as: 'creator',
-          attributes: ['id', 'name', 'email']
-        }
-      ]
+          as: "creator",
+          attributes: ["id", "name", "email"],
+        },
+      ],
     });
 
     res.status(201).json({
       success: true,
-      message: 'Hotel created successfully',
-      data: createdHotel
+      message: "Hotel created successfully",
+      data: createdHotel,
     });
   } catch (error) {
     // Rollback the transaction in case of error
     await transaction.rollback();
-    
-    console.error('Create hotel error:', error);
-    
-    if (error.name === 'SequelizeValidationError') {
+
+    console.error("Create hotel error:", error);
+
+    if (error.name === "SequelizeValidationError") {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.errors.map(err => err.message).join(', ')
+        error: "Validation error",
+        message: error.errors.map((err) => err.message).join(", "),
       });
     }
 
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to create hotel with rooms'
+      error: "Internal server error",
+      message: "Failed to create hotel with rooms",
     });
   }
 };
@@ -112,62 +132,41 @@ export const getAllHotels = async (req, res) => {
   try {
     let hotels;
 
-    if (req.user.role === 'admin') {
+    if (req.user.role === "admin") {
       // Admin can only see hotels they created
       hotels = await Hotel.findAll({
         where: { createdBy: req.user.id },
         include: [
           {
             model: User,
-            as: 'creator',
-            attributes: ['id', 'name', 'email']
+            as: "creator",
+            attributes: ["id", "name", "email"],
           },
           {
             model: User,
-            as: 'managers',
-            attributes: ['id', 'name', 'email'],
-            through: { attributes: [] }
-          }
-        ],
-        order: [['createdAt', 'DESC']]
-      });
-    } else {
-      // Manager can only see hotels they are assigned to
-      hotels = await Hotel.findAll({
-        include: [
-          {
-            model: User,
-            as: 'creator',
-            attributes: ['id', 'name', 'email']
-          },
-          {
-            model: User,
-            as: 'managers',
-            attributes: ['id', 'name', 'email'],
+            as: "managers",
+            attributes: ["id", "name"],
             through: { attributes: [] },
-            where: { id: req.user.id }
-          }
+          },
         ],
-        order: [['createdAt', 'DESC']]
+        order: [["createdAt", "DESC"]],
       });
     }
-
     res.status(200).json({
       success: true,
-      message: 'Hotels retrieved successfully',
+      message: "Hotels retrieved successfully",
       data: hotels,
-      count: hotels.length
+      count: hotels.length,
     });
   } catch (error) {
-    console.error('Get all hotels error:', error);
+    console.error("Get all hotels error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve hotels'
+      error: "Internal server error",
+      message: "Failed to retrieve hotels",
     });
   }
 };
-
 
 // Update hotel (admin only)
 export const updateHotel = async (req, res) => {
@@ -177,12 +176,12 @@ export const updateHotel = async (req, res) => {
 
     // Find hotel
     const hotel = await Hotel.findByPk(id);
-    
+
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'Hotel not found'
+        error: "Hotel not found",
+        message: "Hotel not found",
       });
     }
 
@@ -192,7 +191,7 @@ export const updateHotel = async (req, res) => {
       address,
       phone,
       email,
-      totalRooms
+      totalRooms,
     });
 
     // Fetch updated hotel with associations
@@ -200,38 +199,38 @@ export const updateHotel = async (req, res) => {
       include: [
         {
           model: User,
-          as: 'creator',
-          attributes: ['id', 'name', 'email']
+          as: "creator",
+          attributes: ["id", "name", "email"],
         },
         {
           model: User,
-          as: 'managers',
-          attributes: ['id', 'name', 'email'],
-          through: { attributes: [] }
-        }
-      ]
+          as: "managers",
+          attributes: ["id", "name", "email"],
+          through: { attributes: [] },
+        },
+      ],
     });
 
     res.status(200).json({
       success: true,
-      message: 'Hotel updated successfully',
-      data: updatedHotel
+      message: "Hotel updated successfully",
+      data: updatedHotel,
     });
   } catch (error) {
-    console.error('Update hotel error:', error);
-    
-    if (error.name === 'SequelizeValidationError') {
+    console.error("Update hotel error:", error);
+
+    if (error.name === "SequelizeValidationError") {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.errors.map(err => err.message).join(', ')
+        error: "Validation error",
+        message: error.errors.map((err) => err.message).join(", "),
       });
     }
 
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to update hotel'
+      error: "Internal server error",
+      message: "Failed to update hotel",
     });
   }
 };
@@ -243,12 +242,12 @@ export const deleteHotel = async (req, res) => {
 
     // Find hotel
     const hotel = await Hotel.findByPk(id);
-    
+
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'Hotel not found'
+        error: "Hotel not found",
+        message: "Hotel not found",
       });
     }
 
@@ -257,14 +256,14 @@ export const deleteHotel = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Hotel deleted successfully'
+      message: "Hotel deleted successfully",
     });
   } catch (error) {
-    console.error('Delete hotel error:', error);
+    console.error("Delete hotel error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to delete hotel'
+      error: "Internal server error",
+      message: "Failed to delete hotel",
     });
   }
 };
@@ -279,8 +278,8 @@ export const assignManager = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'Hotel not found'
+        error: "Hotel not found",
+        message: "Hotel not found",
       });
     }
 
@@ -289,48 +288,48 @@ export const assignManager = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: 'User not found',
-        message: 'User not found'
+        error: "User not found",
+        message: "User not found",
       });
     }
 
-    if (user.role !== 'manager') {
+    if (user.role !== "manager") {
       return res.status(400).json({
         success: false,
-        error: 'Invalid user role',
-        message: 'User must be a manager to be assigned to a hotel'
+        error: "Invalid user role",
+        message: "User must be a manager to be assigned to a hotel",
       });
     }
 
     // Check if assignment already exists
     const existingAssignment = await HotelManager.findOne({
-      where: { hotelId, userId }
+      where: { hotelId, userId },
     });
 
     if (existingAssignment) {
       return res.status(400).json({
         success: false,
-        error: 'Assignment exists',
-        message: 'Manager is already assigned to this hotel'
+        error: "Assignment exists",
+        message: "Manager is already assigned to this hotel",
       });
     }
 
     // Create assignment
     await HotelManager.create({
       hotelId,
-      userId
+      userId,
     });
 
     res.status(201).json({
       success: true,
-      message: 'Manager assigned to hotel successfully'
+      message: "Manager assigned to hotel successfully",
     });
   } catch (error) {
-    console.error('Assign manager error:', error);
+    console.error("Assign manager error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to assign manager to hotel'
+      error: "Internal server error",
+      message: "Failed to assign manager to hotel",
     });
   }
 };
@@ -342,14 +341,14 @@ export const removeManager = async (req, res) => {
 
     // Check if assignment exists
     const assignment = await HotelManager.findOne({
-      where: { hotelId, userId }
+      where: { hotelId, userId },
     });
 
     if (!assignment) {
       return res.status(404).json({
         success: false,
-        error: 'Assignment not found',
-        message: 'Manager is not assigned to this hotel'
+        error: "Assignment not found",
+        message: "Manager is not assigned to this hotel",
       });
     }
 
@@ -358,18 +357,17 @@ export const removeManager = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Manager removed from hotel successfully'
+      message: "Manager removed from hotel successfully",
     });
   } catch (error) {
-    console.error('Remove manager error:', error);
+    console.error("Remove manager error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to remove manager from hotel'
+      error: "Internal server error",
+      message: "Failed to remove manager from hotel",
     });
   }
-}; 
-
+};
 
 // Get hotel by id (admin only)
 export const getHotelById = async (req, res) => {
@@ -377,20 +375,20 @@ export const getHotelById = async (req, res) => {
     const { id } = req.params;
     console.log(id);
     const hotel = await Hotel.findOne({
-      where: { id: id }
+      where: { id: id },
     });
     console.log(hotel);
     res.status(200).json({
       success: true,
-      message: 'Hotel retrieved successfully',
-      data: hotel
+      message: "Hotel retrieved successfully",
+      data: hotel,
     });
   } catch (error) {
-    console.error('Error fetching hotel:', error);
+    console.error("Error fetching hotel:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to fetch hotel'
+      error: "Internal server error",
+      message: "Failed to fetch hotel",
     });
   }
 };

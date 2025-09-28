@@ -1,6 +1,6 @@
-import { User } from '../models/index.js';
-import { generateToken } from '../middleware/auth.js';
-import { Op } from 'sequelize';
+import { User, HotelManager } from "../models/index.js";
+import { generateToken } from "../middleware/auth.js";
+import { Op } from "sequelize";
 
 // User signup
 const signup = async (req, res) => {
@@ -10,15 +10,15 @@ const signup = async (req, res) => {
     // Check if user already exists (email or username)
     const existingUser = await User.findOne({
       where: {
-        [Op.or]: [{ email }, { username }]
-      }
+        [Op.or]: [{ email }, { username }],
+      },
     });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        error: 'User already exists',
-        message: 'A user with this email or username already exists'
+        error: "User already exists",
+        message: "A user with this email or username already exists",
       });
     }
 
@@ -28,8 +28,8 @@ const signup = async (req, res) => {
       username,
       email,
       password,
-      role: role || 'admin',
-      lastLogin: new Date()
+      role: role || "admin",
+      lastLogin: new Date(),
     });
 
     // Generate token
@@ -38,33 +38,33 @@ const signup = async (req, res) => {
     // Return user data without password
     res.status(201).json({
       success: true,
-      message: 'User created successfully',
+      message: "User created successfully",
       user: {
         id: user.id,
         name: user.name,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
       },
-      token
+      token,
     });
   } catch (error) {
-    console.error('Signup error:', error);
-    
+    console.error("Signup error:", error);
+
     // Handle Sequelize validation errors
-    if (error.name === 'SequelizeValidationError') {
-      const validationErrors = error.errors.map(err => err.message);
+    if (error.name === "SequelizeValidationError") {
+      const validationErrors = error.errors.map((err) => err.message);
       return res.status(400).json({
         success: false,
-        error: 'Validation failed',
-        message: validationErrors.join(', ')
+        error: "Validation failed",
+        message: validationErrors.join(", "),
       });
     }
 
     res.status(500).json({
       success: false,
-      error: 'Signup failed',
-      message: 'Internal server error during signup'
+      error: "Signup failed",
+      message: "Internal server error during signup",
     });
   }
 };
@@ -78,46 +78,41 @@ const signin = async (req, res) => {
     if (!username && !email) {
       return res.status(400).json({
         success: false,
-        error: 'Login credentials required',
-        message: 'Please provide either username or email'
+        error: "Login credentials required",
+        message: "Please provide either username or email",
       });
     }
 
     if (!password) {
       return res.status(400).json({
         success: false,
-        error: 'Password required',
-        message: 'Password is required'
+        error: "Password required",
+        message: "Password is required",
       });
     }
 
     // Find user by username OR email
     const user = await User.findOne({
       where: {
-        [Op.or]: [
-          { username: username || '' },
-          { email: email || '' }
-        ]
-      }
+        [Op.or]: [{ username: username || "" }, { email: email || "" }],
+      },
     });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid credentials',
-        message: 'Username/email or password is incorrect'
+        error: "Invalid credentials",
+        message: "Username/email or password is incorrect",
       });
     }
-
-  
 
     // Verify password
     const isValidPassword = await user.comparePassword(password);
     if (!isValidPassword) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid credentials',
-        message: 'Username/email or password is incorrect'
+        error: "Invalid credentials",
+        message: "Username/email or password is incorrect",
       });
     }
 
@@ -127,25 +122,34 @@ const signin = async (req, res) => {
     // Update last login
     await user.update({ lastLogin: new Date() });
 
+    let hotelId = null;
+
+    if (user.role === "manager") {
+      const hotel = await HotelManager.findOne({ where: { userId: user.id } });
+      hotelId = hotel.id;
+    }
+
     res.json({
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       role: user.role,
       user: {
         id: user.id,
         name: user.name,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        lastLogin: user.lastLogin,
       },
-      token
+      hotelId,
+      token,
     });
   } catch (error) {
-    console.error('Signin error:', error);
+    console.error("Signin error:", error);
     res.status(500).json({
       success: false,
-      error: 'Signin failed',
-      message: 'Internal server error during signin'
+      error: "Signin failed",
+      message: "Internal server error during signin",
     });
   }
 };
@@ -154,7 +158,7 @@ const signin = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const user = req.user;
-    
+
     res.json({
       success: true,
       user: {
@@ -164,15 +168,15 @@ const getProfile = async (req, res) => {
         email: user.email,
         role: user.role,
         lastLogin: user.lastLogin,
-        createdAt: user.createdAt
-      }
+        createdAt: user.createdAt,
+      },
     });
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error("Get profile error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get profile',
-      message: 'Internal server error'
+      error: "Failed to get profile",
+      message: "Internal server error",
     });
   }
 };
@@ -189,8 +193,8 @@ const updateProfile = async (req, res) => {
       if (existingUser) {
         return res.status(400).json({
           success: false,
-          error: 'Email already exists',
-          message: 'This email is already registered'
+          error: "Email already exists",
+          message: "This email is already registered",
         });
       }
     }
@@ -198,33 +202,28 @@ const updateProfile = async (req, res) => {
     // Update user
     await user.update({
       name: name || user.name,
-      email: email || user.email
+      email: email || user.email,
     });
 
     res.json({
       success: true,
-      message: 'Profile updated successfully',
+      message: "Profile updated successfully",
       user: {
         id: user.id,
         name: user.name,
         username: user.username,
         email: user.email,
-        role: user.role
-      }
+        role: user.role,
+      },
     });
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error("Update profile error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update profile',
-      message: 'Internal server error'
+      error: "Failed to update profile",
+      message: "Internal server error",
     });
   }
 };
 
-export {
-  signup,
-  signin,
-  getProfile,
-  updateProfile
-}; 
+export { signup, signin, getProfile, updateProfile };

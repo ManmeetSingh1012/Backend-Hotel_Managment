@@ -1,6 +1,168 @@
-import { GuestRecord, Hotel, HotelManager, GuestTransaction, GuestExpense, PaymentMode, Menu, GuestFoodOrder, sequelize } from '../models/index.js';
-import { Op } from 'sequelize';
-import { convertNestedDecimalFields, convertDecimalFields } from '../utils/decimalConverter.js';
+import {
+  GuestRecord,
+  Hotel,
+  HotelManager,
+  GuestTransaction,
+  GuestExpense,
+  PaymentMode,
+  Menu,
+  GuestFoodOrder,
+  GuestPendingPayment,
+  sequelize,
+} from "../models/index.js";
+import { Op } from "sequelize";
+import {
+  convertNestedDecimalFields,
+  convertDecimalFields,
+} from "../utils/decimalConverter.js";
+
+// Helper function to calculate pending amount for a guest
+const calculatePendingAmount = async (guestId, targetDate = null) => {
+  const todayDate = targetDate || new Date().toISOString().split("T")[0];
+
+  // Get guest record data
+  const guestRecord = await GuestRecord.findByPk(guestId, {
+    attributes: ["id", "checkinDate", "rent", "bill"],
+    raw: true,
+  });
+
+  if (!guestRecord || !guestRecord.checkinDate) {
+    return 0;
+  }
+
+  const checkinDate = guestRecord.checkinDate;
+
+  // Calculate total bill (rent * days)
+  const totalBill =
+    parseFloat(guestRecord.bill || guestRecord.rent || 0) *
+    Math.max(
+      1,
+      Math.ceil(
+        (new Date(todayDate) - new Date(checkinDate)) / (1000 * 60 * 60 * 24)
+      ) + 1
+    );
+
+  // Get total food expenses
+  const guestFoodExpenses = await GuestExpense.findAll({
+    attributes: [
+      [
+        sequelize.literal(`
+          SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
+        `),
+        "totalFoodExpenses",
+      ],
+    ],
+    where: {
+      bookingId: guestId,
+      createdAt: {
+        [Op.gte]: checkinDate,
+        [Op.lte]: sequelize.literal(`'${todayDate} 23:59:59'`),
+      },
+    },
+    raw: true,
+  });
+
+  // Get total payments
+  const guestPayments = await GuestTransaction.findAll({
+    attributes: [
+      [
+        sequelize.literal(`
+          SUM(CASE WHEN "GuestTransaction"."paymentType" IN ('partial', 'advance', 'final') THEN "GuestTransaction"."amount" ELSE 0 END)
+        `),
+        "totalPayments",
+      ],
+    ],
+    where: {
+      bookingId: guestId,
+      createdAt: {
+        [Op.gte]: checkinDate,
+        [Op.lte]: sequelize.literal(`'${todayDate} 23:59:59'`),
+      },
+    },
+    raw: true,
+  });
+
+  const totalFoodExpenses = parseFloat(
+    guestFoodExpenses[0]?.totalFoodExpenses || 0
+  );
+  const totalPayments = parseFloat(guestPayments[0]?.totalPayments || 0);
+
+  return Math.max(0, totalBill + totalFoodExpenses - totalPayments);
+};
+
+// Helper function to manage pending payment entry
+const managePendingPayment = async (
+  guestRecord,
+  pendingAmount,
+  totalPayment,
+  transaction
+) => {
+  if (pendingAmount <= 0) {
+    // No pending amount, ensure no pending payment entry exists
+    await GuestPendingPayment.destroy({
+      where: { serialNo: guestRecord.serialNo },
+      transaction,
+    });
+    return { action: "deleted", amount: 0 };
+  }
+
+  // Check if pending payment entry already exists
+  const existingPendingPayment = await GuestPendingPayment.findOne({
+    where: { serialNo: guestRecord.serialNo },
+    transaction,
+  });
+
+  if (existingPendingPayment) {
+    // Update existing entry
+    await existingPendingPayment.update(
+      {
+        pendingAmount,
+        totalFood: await calculateFoodExpenses(guestRecord.id),
+        rent: parseFloat(guestRecord.bill || guestRecord.rent || 0),
+        totalPayment: totalPayment,
+      },
+      { transaction }
+    );
+    return { action: "updated", amount: pendingAmount };
+  } else {
+    // Create new entry
+    await GuestPendingPayment.create(
+      {
+        hotelId: guestRecord.hotelId,
+        serialNo: guestRecord.serialNo,
+        guestName: guestRecord.guestName,
+        checkinDate: guestRecord.checkinDate,
+        checkoutDate: guestRecord.checkoutDate,
+        pendingAmount,
+        totalFood: await calculateFoodExpenses(guestRecord.id),
+        rent: parseFloat(guestRecord.bill || guestRecord.rent || 0),
+        totalPayment: totalPayment,
+      },
+      { transaction }
+    );
+    return { action: "created", amount: pendingAmount };
+  }
+};
+
+// Helper function to calculate food expenses for a guest
+const calculateFoodExpenses = async (guestId) => {
+  const foodExpenses = await GuestExpense.findAll({
+    attributes: [
+      [
+        sequelize.literal(`
+          SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
+        `),
+        "totalFoodExpenses",
+      ],
+    ],
+    where: {
+      bookingId: guestId,
+    },
+    raw: true,
+  });
+
+  return parseFloat(foodExpenses[0]?.totalFoodExpenses || 0);
+};
 
 // Create a new guest record (manager only for assigned hotels)
 export const createGuestRecord = async (req, res) => {
@@ -15,36 +177,34 @@ export const createGuestRecord = async (req, res) => {
       advancePayment,
       rent,
       bill,
-      gstApplicable
+      gstApplicable,
     } = req.body;
-
- 
 
     const userId = req.user.id;
     const userRole = req.user.role;
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can create guest records'
+        error: "Access denied",
+        message: "Only managers and admins can create guest records",
       });
     }
 
@@ -53,12 +213,10 @@ export const createGuestRecord = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'The specified hotel does not exist'
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
       });
     }
-
-
 
     // Verify payment mode exists if provided
     let paymentModeRecord = null;
@@ -67,8 +225,8 @@ export const createGuestRecord = async (req, res) => {
       if (!paymentModeRecord) {
         return res.status(404).json({
           success: false,
-          error: 'Payment mode not found',
-          message: 'The specified payment mode does not exist'
+          error: "Payment mode not found",
+          message: "The specified payment mode does not exist",
         });
       }
     }
@@ -82,29 +240,28 @@ export const createGuestRecord = async (req, res) => {
       checkinTime,
       rent,
       bill,
-      gstApplicable
+      gstApplicable,
     };
 
- 
     // Use transaction to ensure data consistency
     const result = await sequelize.transaction(async (t) => {
       // Create guest record
-      const guestRecord = await GuestRecord.create(guestData, { transaction: t });
-
-
-    
-     
+      const guestRecord = await GuestRecord.create(guestData, {
+        transaction: t,
+      });
 
       // Create payment transaction if payment mode, type, and amount are provided
-  
-      if(advancePayment){
-        await GuestTransaction.create({
-          bookingId: guestRecord?.id,
-          paymentType: 'advance',
-          paymentModeId: paymentId,
-          amount: advancePayment,
-          
-        }, { transaction: t });
+
+      if (advancePayment) {
+        await GuestTransaction.create(
+          {
+            bookingId: guestRecord?.id,
+            paymentType: "advance",
+            paymentModeId: paymentId,
+            amount: advancePayment,
+          },
+          { transaction: t }
+        );
       }
 
       return guestRecord;
@@ -115,10 +272,10 @@ export const createGuestRecord = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
-        }
-      ]
+          as: "hotel",
+          attributes: ["id", "name"],
+        },
+      ],
     });
 
     // Get all guest IDs for fetching transactions and expenses
@@ -127,119 +284,132 @@ export const createGuestRecord = async (req, res) => {
     // Fetch transactions for this guest
     const transactions = await GuestTransaction.findAll({
       where: {
-        bookingId: { [Op.in]: guestIds }
+        bookingId: { [Op.in]: guestIds },
       },
       include: [
         {
           model: PaymentMode,
-          as: 'paymentMode',
-          attributes: ['id', 'paymentMode']
-        }
+          as: "paymentMode",
+          attributes: ["id", "paymentMode"],
+        },
       ],
-      attributes: ['bookingId', 'amount', 'paymentType', 'paymentModeId']
+      attributes: ["bookingId", "amount", "paymentType", "paymentModeId"],
     });
 
     // Fetch expenses for this guest
     const expenses = await GuestExpense.findAll({
       where: {
-        bookingId: { [Op.in]: guestIds }
+        bookingId: { [Op.in]: guestIds },
       },
-      attributes: ['bookingId', 'expenseType', 'amount'],
-      raw: true
+      attributes: ["bookingId", "expenseType", "amount"],
+      raw: true,
     });
 
     // Group transactions by bookingId
     const transactionsByBooking = {};
-    transactions.forEach(transaction => {
+    transactions.forEach((transaction) => {
       if (!transactionsByBooking[transaction.bookingId]) {
         transactionsByBooking[transaction.bookingId] = [];
       }
       transactionsByBooking[transaction.bookingId].push({
         amount: transaction.amount,
         paymentType: transaction.paymentType,
-        paymentMode: transaction.paymentMode ? transaction.paymentMode.paymentMode : null
+        paymentMode: transaction.paymentMode
+          ? transaction.paymentMode.paymentMode
+          : null,
       });
     });
 
     // Group and consolidate expenses by bookingId and expenseType
     const expensesByBooking = {};
-    expenses.forEach(expense => {
+    expenses.forEach((expense) => {
       if (!expensesByBooking[expense.bookingId]) {
         expensesByBooking[expense.bookingId] = {};
       }
-      
+
       if (!expensesByBooking[expense.bookingId][expense.expenseType]) {
         expensesByBooking[expense.bookingId][expense.expenseType] = 0;
       }
-      
+
       // Add amounts for the same expense type
-      expensesByBooking[expense.bookingId][expense.expenseType] += parseFloat(expense.amount || 0);
+      expensesByBooking[expense.bookingId][expense.expenseType] += parseFloat(
+        expense.amount || 0
+      );
     });
 
     // Convert consolidated expenses to array format
     const consolidatedExpensesByBooking = {};
-    Object.keys(expensesByBooking).forEach(bookingId => {
-      consolidatedExpensesByBooking[bookingId] = Object.keys(expensesByBooking[bookingId]).map(expenseType => ({
+    Object.keys(expensesByBooking).forEach((bookingId) => {
+      consolidatedExpensesByBooking[bookingId] = Object.keys(
+        expensesByBooking[bookingId]
+      ).map((expenseType) => ({
         expenseType: expenseType,
-        amount: expensesByBooking[bookingId][expenseType]
+        amount: expensesByBooking[bookingId][expenseType],
       }));
     });
 
     // Calculate pending amounts for this guest
     const guestRecord = await GuestRecord.findByPk(createdRecord.id, {
-      attributes: ['id', 'checkinDate', 'bill'],
-      raw: true
+      attributes: ["id", "checkinDate", "bill"],
+      raw: true,
     });
 
     // Calculate total food expenses for this guest
     const foodExpenses = await GuestExpense.findAll({
       attributes: [
-        'bookingId',
+        "bookingId",
         [
           sequelize.literal(`
             SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
           `),
-          'totalFoodExpenses'
-        ]
+          "totalFoodExpenses",
+        ],
       ],
       where: {
-        bookingId: createdRecord.id
+        bookingId: createdRecord.id,
       },
-      group: ['bookingId'],
-      raw: true
+      group: ["bookingId"],
+      raw: true,
     });
 
     // Calculate total payments for this guest
     const totalPaymentsResult = await GuestTransaction.findAll({
       attributes: [
-        'bookingId',
+        "bookingId",
         [
           sequelize.literal(`
             SUM(CASE WHEN "GuestTransaction"."paymentType" IN ('partial', 'advance', 'final') THEN "GuestTransaction"."amount" ELSE 0 END)
           `),
-          'totalPayments'
-        ]
+          "totalPayments",
+        ],
       ],
       where: {
-        bookingId: createdRecord.id
+        bookingId: createdRecord.id,
       },
-      group: ['bookingId'],
-      raw: true
+      group: ["bookingId"],
+      raw: true,
     });
 
     // Calculate pending amount
     const totalBill = parseFloat(guestRecord.bill || 0);
-    const totalFoodExpenses = parseFloat(foodExpenses[0]?.totalFoodExpenses || 0);
-    const totalPayments = parseFloat(totalPaymentsResult[0]?.totalPayments || 0);
-    const pendingAmount = Math.max(0, (totalBill + totalFoodExpenses) - totalPayments);
+    const totalFoodExpenses = parseFloat(
+      foodExpenses[0]?.totalFoodExpenses || 0
+    );
+    const totalPayments = parseFloat(
+      totalPaymentsResult[0]?.totalPayments || 0
+    );
+    const pendingAmount = Math.max(
+      0,
+      totalBill + totalFoodExpenses - totalPayments
+    );
 
     // Process record to include transactions, expenses, and pending amounts
     const recordData = createdRecord.toJSON();
     const recordId = recordData.id;
-    
+
     // Get transactions for this guest (empty array if none)
     const guestTransactions = transactionsByBooking[recordId] || [];
-    
+
     // Get expenses for this guest (empty array if none)
     const guestExpenses = consolidatedExpensesByBooking[recordId] || [];
 
@@ -248,58 +418,61 @@ export const createGuestRecord = async (req, res) => {
       ...recordData,
       transactions: guestTransactions,
       expenses: guestExpenses,
-      pendingAmount: pendingAmount
+      pendingAmount: pendingAmount,
     });
 
     res.status(201).json({
       success: true,
-      message: 'Guest record created successfully',
+      message: "Guest record created successfully",
       records: [processedRecord],
       pagination: {
         currentPage: 1,
         totalPages: 1,
         totalRecords: 1,
-        recordsPerPage: 1
+        recordsPerPage: 1,
       },
-      todayTotalSales: totalBill + totalFoodExpenses
+      todayTotalSales: totalBill + totalFoodExpenses,
     });
-
   } catch (error) {
-    console.error('Create guest record error:', error);
+    console.error("Create guest record error:", error);
 
-    if (error.name === 'SequelizeValidationError') {
+    if (error.name === "SequelizeValidationError") {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.errors.map(err => err.message).join(', ')
+        error: "Validation error",
+        message: error.errors.map((err) => err.message).join(", "),
       });
     }
 
-    if (error.name === 'SequelizeUniqueConstraintError') {
+    if (error.name === "SequelizeUniqueConstraintError") {
       return res.status(400).json({
         success: false,
-        error: 'Duplicate error',
-        message: 'A guest record with this serial number already exists'
+        error: "Duplicate error",
+        message: "A guest record with this serial number already exists",
       });
     }
 
     // Handle custom validation errors from model hooks
-    if (error.message && error.message.includes('Check-out date/time must be after check-in date/time')) {
+    if (
+      error.message &&
+      error.message.includes(
+        "Check-out date/time must be after check-in date/time"
+      )
+    ) {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.message
+        error: "Validation error",
+        message: error.message,
       });
     }
 
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to create guest record'
+      error: "Internal server error",
+      message: "Failed to create guest record",
     });
   }
 };
-
 
 // Update guest record (manager only)
 export const updateGuestRecord = async (req, res) => {
@@ -324,12 +497,12 @@ export const updateGuestRecord = async (req, res) => {
       amount,
       ...otherData
     } = req.body;
-    
+
     let updateData = {};
-    
+
     // Build updateData based on filter
     switch (filter) {
-      case 'guest-info':
+      case "guest-info":
         // Only update guest information fields
         if (guestName !== undefined) updateData.guestName = guestName;
         if (phoneNo !== undefined) updateData.phoneNo = phoneNo;
@@ -337,30 +510,31 @@ export const updateGuestRecord = async (req, res) => {
         if (checkinTime !== undefined) updateData.checkinTime = checkinTime;
         if (rent !== undefined) updateData.rent = rent;
         break;
-        
-      case 'checkout':
+
+      case "checkout":
         // Only update checkout fields
         if (checkoutTime !== undefined) updateData.checkoutTime = checkoutTime;
         break;
-        
-      case 'payment-info':
+
+      case "payment-info":
         // No guest record fields to update for payment-info
         // Payment handling is done separately in transaction logic
         break;
-        
-      case 'food':
+
+      case "food":
         // No guest record fields to update for food
         // Food handling is done separately in expense logic
         break;
-        
+
       default:
         return res.status(400).json({
           success: false,
-          error: 'Invalid filter',
-          message: 'Invalid filter. Allowed filters: guest-info, checkout, payment-info, food'
+          error: "Invalid filter",
+          message:
+            "Invalid filter. Allowed filters: guest-info, checkout, payment-info, food",
         });
     }
-    
+
     const userId = req.user.id;
     const userRole = req.user.role;
     console.log("Update guest record request:", {
@@ -368,7 +542,7 @@ export const updateGuestRecord = async (req, res) => {
       userId,
       userRole,
       filter,
-      requestData: req.body
+      requestData: req.body,
     });
 
     // Find the guest record
@@ -376,33 +550,33 @@ export const updateGuestRecord = async (req, res) => {
     if (!guestRecord) {
       return res.status(404).json({
         success: false,
-        error: 'Record not found',
-        message: 'Guest record not found'
+        error: "Record not found",
+        message: "Guest record not found",
       });
     }
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: guestRecord.hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this guest record'
+          error: "Access denied",
+          message: "You do not have access to this guest record",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can update guest records'
+        error: "Access denied",
+        message: "Only managers and admins can update guest records",
       });
     }
 
@@ -414,8 +588,8 @@ export const updateGuestRecord = async (req, res) => {
     if (paymentAmount && parseFloat(paymentAmount) <= 0) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid payment amount',
-        message: 'Payment amount must be greater than 0'
+        error: "Invalid payment amount",
+        message: "Payment amount must be greater than 0",
       });
     }
 
@@ -426,27 +600,31 @@ export const updateGuestRecord = async (req, res) => {
       if (!paymentModeRecord) {
         return res.status(404).json({
           success: false,
-          error: 'Payment mode not found',
-          message: 'The specified payment mode does not exist'
+          error: "Payment mode not found",
+          message: "The specified payment mode does not exist",
         });
       }
-      console.log(`Payment mode verified: ${paymentModeRecord.paymentMode} (ID: ${paymentId})`);
+      console.log(
+        `Payment mode verified: ${paymentModeRecord.paymentMode} (ID: ${paymentId})`
+      );
     }
 
     // If checkoutTime is present in update, set checkoutDate to today's date
-    if (updateData.hasOwnProperty('checkoutTime') && updateData.checkoutTime) {
+    if (updateData.hasOwnProperty("checkoutTime") && updateData.checkoutTime) {
       const today = new Date();
       const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
       updateData.checkoutDate = `${yyyy}-${mm}-${dd}`;
     }
 
     // Get today's date for comparison
     const today = new Date();
-    const todayDate = today.toISOString().split('T')[0];
-    
-    console.log(`Processing update for guest ${id} on date: ${todayDate} with filter: ${filter}`);
+    const todayDate = today.toISOString().split("T")[0];
+
+    console.log(
+      `Processing update for guest ${id} on date: ${todayDate} with filter: ${filter}`
+    );
 
     // Use transaction to ensure data consistency
     const result = await sequelize.transaction(async (t) => {
@@ -454,89 +632,228 @@ export const updateGuestRecord = async (req, res) => {
         // Update the guest record only if there are fields to update
         if (Object.keys(updateData).length > 0) {
           await guestRecord.update(updateData, { transaction: t });
-          console.log(`Updated guest record fields: ${Object.keys(updateData).join(', ')}`);
+          console.log(
+            `Updated guest record fields: ${Object.keys(updateData).join(", ")}`
+          );
         }
 
         let transactionUpdated = false;
         let expenseUpdated = false;
+        let pendingPaymentAction = null;
 
         // Handle payment transaction - only when filter is payment-info and payment details are provided
-        if (filter === 'payment-info' && paymentId && paymentType && paymentAmount && parseFloat(paymentAmount) > 0) {
-          // Check if a transaction with same payment type exists today
-          // const existingTransaction = await GuestTransaction.findOne({
-          //   where: {
-          //     bookingId: guestRecord.id,
-          //     paymentType: paymentType,
-          //     createdAt: {
-          //       [Op.gte]: new Date(todayDate + ' 00:00:00'),
-          //       [Op.lt]: new Date(todayDate + ' 23:59:59')
-          //     }
-          //   },
-          //   transaction: t
-          // });
+        if (
+          filter === "payment-info" &&
+          paymentId &&
+          paymentType &&
+          paymentAmount &&
+          parseFloat(paymentAmount) > 0
+        ) {
+          await GuestTransaction.create(
+            {
+              bookingId: guestRecord.id,
+              paymentType: paymentType,
+              paymentModeId: paymentId,
+              amount: paymentAmount,
+            },
+            { transaction: t }
+          );
+          console.log(
+            `Created new ${paymentType} transaction for guest ${guestRecord.id}, amount: ${paymentAmount}`
+          );
 
-          // console.log(existingTransaction, "existingTransaction");
-          // if (existingTransaction) {
-          //   // Update existing transaction amount
-          //   const newAmount = parseFloat(existingTransaction.amount) + parseFloat(paymentAmount);
-          //   await existingTransaction.update({
-          //     amount: newAmount
-          //   }, { transaction: t });
-          //   transactionUpdated = true;
-          //   console.log(`Updated existing ${paymentType} transaction for guest ${guestRecord.id}, new total: ${newAmount}`);
-          // } else {
-          //   // Create new transaction
-          // }
+          // Check if guest is checked out for optimized pending payment handling
+          if (guestRecord.checkoutDate) {
+            // Guest is checked out - find existing pending payment and subtract payment amount
+            const existingPendingPayment = await GuestPendingPayment.findOne({
+              where: { serialNo: guestRecord.serialNo },
+              transaction: t,
+            });
 
-          
-          await GuestTransaction.create({
-            bookingId: guestRecord.id,
-            paymentType: paymentType,
-            paymentModeId: paymentId,
-            amount: paymentAmount,
-          }, { transaction: t });
-          console.log(`Created new ${paymentType} transaction for guest ${guestRecord.id}, amount: ${paymentAmount}`);
+            if (existingPendingPayment) {
+              const currentPendingAmount = parseFloat(
+                existingPendingPayment.pendingAmount
+              );
+              const paymentAmountNum = parseFloat(paymentAmount);
+              const newPendingAmount = currentPendingAmount - paymentAmountNum;
 
-          
+              // Calculate total payment (total bill + total expenses) - matching generateCustomerBill logic
+              // Get all expenses for this booking
+              const allExpenses = await GuestExpense.findAll({
+                where: { bookingId: guestRecord.id },
+              });
+
+              // Calculate total expenses (all types, not just food)
+              const totalExpenses = allExpenses.reduce(
+                (sum, expense) => sum + parseFloat(expense.amount),
+                0
+              );
+
+              // Calculate total rent for the entire stay duration
+              const checkinDate = new Date(guestRecord.checkinDate);
+              const checkoutDate = guestRecord.checkoutDate
+                ? new Date(guestRecord.checkoutDate)
+                : new Date();
+              const totalDays = Math.max(
+                1,
+                Math.ceil(
+                  (checkoutDate - checkinDate) / (1000 * 60 * 60 * 24)
+                ) + 1
+              );
+              const dailyRent = parseFloat(
+                guestRecord.bill || guestRecord.rent || 0
+              );
+              const totalBill = totalDays * dailyRent;
+
+              const totalPayment = totalBill + totalExpenses;
+
+              if (newPendingAmount <= 0) {
+                // Remove pending payment entry
+                await existingPendingPayment.destroy({ transaction: t });
+                pendingPaymentAction = { action: "deleted", amount: 0 };
+                console.log(
+                  `Payment processed: Pending payment cleared for guest ${guestRecord.id}`
+                );
+              } else {
+                // Update pending payment amount and total payment
+                await existingPendingPayment.update(
+                  {
+                    pendingAmount: newPendingAmount,
+                    totalPayment: totalPayment,
+                  },
+                  { transaction: t }
+                );
+                pendingPaymentAction = {
+                  action: "updated",
+                  amount: newPendingAmount,
+                };
+                console.log(
+                  `Payment processed: Pending payment updated to ₹${newPendingAmount} for guest ${guestRecord.id}, total payment: ₹${totalPayment}`
+                );
+              }
+            } else {
+              // No existing pending payment found for checked-out guest
+              console.log(
+                `Payment processed: No pending payment entry found for checked-out guest ${guestRecord.id}`
+              );
+            }
+          } else {
+            // Guest is not checked out - do not manage pending payments
+            console.log(
+              `Payment processed: Guest ${guestRecord.id} is not checked out, skipping pending payment management`
+            );
+          }
         }
 
         // Handle food expense - only when filter is food and expense details are provided
-        if (filter === 'food' && expenseType && amount && parseFloat(amount) > 0) {
+        if (
+          filter === "food" &&
+          expenseType &&
+          amount &&
+          parseFloat(amount) > 0
+        ) {
           // Check if a food expense exists today
           const existingFoodExpense = await GuestExpense.findOne({
             where: {
               bookingId: guestRecord.id,
               expenseType: expenseType,
               createdAt: {
-                [Op.gte]: new Date(todayDate + ' 00:00:00'),
-                [Op.lt]: new Date(todayDate + ' 23:59:59')
-              }
+                [Op.gte]: new Date(todayDate + " 00:00:00"),
+                [Op.lt]: new Date(todayDate + " 23:59:59"),
+              },
             },
-            transaction: t
+            transaction: t,
           });
 
           if (existingFoodExpense) {
             // Update existing food expense amount
-            const newFoodAmount = parseFloat(existingFoodExpense.amount) + parseFloat(amount);
-            await existingFoodExpense.update({
-              amount: newFoodAmount
-            }, { transaction: t });
+            const newFoodAmount =
+              parseFloat(existingFoodExpense.amount) + parseFloat(amount);
+            await existingFoodExpense.update(
+              {
+                amount: newFoodAmount,
+              },
+              { transaction: t }
+            );
             expenseUpdated = true;
-            console.log(`Updated existing ${expenseType} expense for guest ${guestRecord.id}, new total: ${newFoodAmount}`);
+            console.log(
+              `Updated existing ${expenseType} expense for guest ${guestRecord.id}, new total: ${newFoodAmount}`
+            );
           } else {
             // Create new food expense
-            await GuestExpense.create({
-              bookingId: guestRecord.id,
-              expenseType: expenseType,
-              amount: amount
-            }, { transaction: t });
-            console.log(`Created new ${expenseType} expense for guest ${guestRecord.id}, amount: ${amount}`);
+            await GuestExpense.create(
+              {
+                bookingId: guestRecord.id,
+                expenseType: expenseType,
+                amount: amount,
+              },
+              { transaction: t }
+            );
+            console.log(
+              `Created new ${expenseType} expense for guest ${guestRecord.id}, amount: ${amount}`
+            );
           }
         }
 
-        return { guestRecord, transactionUpdated, expenseUpdated };
+        // Handle checkout - create/update pending payment entry if there's pending amount
+        if (
+          filter === "checkout" &&
+          updateData.hasOwnProperty("checkoutTime") &&
+          updateData.checkoutTime
+        ) {
+          const pendingAmount = await calculatePendingAmount(
+            guestRecord.id,
+            todayDate
+          );
+
+          // Calculate total payment (total bill + total expenses) - matching generateCustomerBill logic
+          // Get all expenses for this booking
+          const allExpenses = await GuestExpense.findAll({
+            where: { bookingId: guestRecord.id },
+          });
+
+          // Calculate total expenses (all types, not just food)
+          const totalExpenses = allExpenses.reduce(
+            (sum, expense) => sum + parseFloat(expense.amount),
+            0
+          );
+
+          // Calculate total rent for the entire stay duration
+          const checkinDate = new Date(guestRecord.checkinDate);
+          const checkoutDate = guestRecord.checkoutDate
+            ? new Date(guestRecord.checkoutDate)
+            : new Date();
+          const totalDays = Math.max(
+            1,
+            Math.ceil((checkoutDate - checkinDate) / (1000 * 60 * 60 * 24)) + 1
+          );
+          const dailyRent = parseFloat(
+            guestRecord.bill || guestRecord.rent || 0
+          );
+          const totalBill = totalDays * dailyRent;
+
+          const totalPayment = totalBill + totalExpenses;
+
+          // Manage pending payment entry
+          pendingPaymentAction = await managePendingPayment(
+            guestRecord,
+            pendingAmount,
+            totalPayment,
+            t
+          );
+          console.log(
+            `Checkout: Pending payment ${pendingPaymentAction.action} for guest ${guestRecord.id}, amount: ${pendingPaymentAction.amount}, total payment: ${totalPayment}`
+          );
+        }
+
+        return {
+          guestRecord,
+          transactionUpdated,
+          expenseUpdated,
+          pendingPaymentAction,
+        };
       } catch (transactionError) {
-        console.error('Transaction error:', transactionError);
+        console.error("Transaction error:", transactionError);
         throw transactionError;
       }
     });
@@ -546,10 +863,10 @@ export const updateGuestRecord = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
-        }
-      ]
+          as: "hotel",
+          attributes: ["id", "name"],
+        },
+      ],
     });
 
     // Get all guest IDs for fetching transactions and expenses
@@ -561,19 +878,19 @@ export const updateGuestRecord = async (req, res) => {
         bookingId: { [Op.in]: guestIds },
         [Op.and]: [
           sequelize.where(
-            sequelize.fn('DATE', sequelize.col('GuestTransaction.createdAt')),
+            sequelize.fn("DATE", sequelize.col("GuestTransaction.createdAt")),
             todayDate
-          )
-        ]
+          ),
+        ],
       },
       include: [
         {
           model: PaymentMode,
-          as: 'paymentMode',
-          attributes: ['id', 'paymentMode']
-        }
+          as: "paymentMode",
+          attributes: ["id", "paymentMode"],
+        },
       ],
-      attributes: ['bookingId', 'amount', 'paymentType', 'paymentModeId']
+      attributes: ["bookingId", "amount", "paymentType", "paymentModeId"],
     });
 
     // Fetch expenses for today's date based on createdAt field (matching getGuestRecordsByHotel)
@@ -582,69 +899,77 @@ export const updateGuestRecord = async (req, res) => {
         bookingId: { [Op.in]: guestIds },
         [Op.and]: [
           sequelize.where(
-            sequelize.fn('DATE', sequelize.col('GuestExpense.createdAt')),
+            sequelize.fn("DATE", sequelize.col("GuestExpense.createdAt")),
             todayDate
-          )
-        ]
+          ),
+        ],
       },
-      attributes: ['bookingId', 'expenseType', 'amount'],
-      raw: true
+      attributes: ["bookingId", "expenseType", "amount"],
+      raw: true,
     });
 
     // Group transactions by bookingId (matching getGuestRecordsByHotel)
     const transactionsByBooking = {};
-    transactions.forEach(transaction => {
+    transactions.forEach((transaction) => {
       if (!transactionsByBooking[transaction.bookingId]) {
         transactionsByBooking[transaction.bookingId] = [];
       }
       transactionsByBooking[transaction.bookingId].push({
         amount: transaction.amount,
         paymentType: transaction.paymentType,
-        paymentMode: transaction.paymentMode ? transaction.paymentMode.paymentMode : null
+        paymentMode: transaction.paymentMode
+          ? transaction.paymentMode.paymentMode
+          : null,
       });
     });
 
     // Group and consolidate expenses by bookingId and expenseType (matching getGuestRecordsByHotel)
     const expensesByBooking = {};
-    expenses.forEach(expense => {
+    expenses.forEach((expense) => {
       if (!expensesByBooking[expense.bookingId]) {
         expensesByBooking[expense.bookingId] = {};
       }
-      
+
       if (!expensesByBooking[expense.bookingId][expense.expenseType]) {
         expensesByBooking[expense.bookingId][expense.expenseType] = 0;
       }
-      
+
       // Add amounts for the same expense type
-      expensesByBooking[expense.bookingId][expense.expenseType] += parseFloat(expense.amount || 0);
+      expensesByBooking[expense.bookingId][expense.expenseType] += parseFloat(
+        expense.amount || 0
+      );
     });
 
     // Convert consolidated expenses to array format (matching getGuestRecordsByHotel)
     const consolidatedExpensesByBooking = {};
-    Object.keys(expensesByBooking).forEach(bookingId => {
-      consolidatedExpensesByBooking[bookingId] = Object.keys(expensesByBooking[bookingId]).map(expenseType => ({
+    Object.keys(expensesByBooking).forEach((bookingId) => {
+      consolidatedExpensesByBooking[bookingId] = Object.keys(
+        expensesByBooking[bookingId]
+      ).map((expenseType) => ({
         expenseType: expenseType,
-        amount: expensesByBooking[bookingId][expenseType]
+        amount: expensesByBooking[bookingId][expenseType],
       }));
     });
 
     // Calculate pending amounts the same way as getGuestRecordsByHotel
     const guestRecordsData = await GuestRecord.findAll({
-      attributes: ['id', 'checkinDate'],
+      attributes: ["id", "checkinDate"],
       where: {
-        id: { [Op.in]: guestIds }
+        id: { [Op.in]: guestIds },
       },
-      raw: true
+      raw: true,
     });
 
     // Calculate pending amount for this guest (matching getGuestRecordsByHotel logic)
     const guestId = updatedRecord.id;
-    const guestRecordData = guestRecordsData.find(record => record.id === guestId);
+    const guestRecordData = guestRecordsData.find(
+      (record) => record.id === guestId
+    );
     let pendingAmount = 0;
 
     if (guestRecordData && guestRecordData.checkinDate) {
       const checkinDate = guestRecordData.checkinDate;
-      
+
       // Get all bills for this guest from checkin_date to today
       const guestBills = await GuestRecord.findAll({
         attributes: [
@@ -655,8 +980,8 @@ export const updateGuestRecord = async (req, res) => {
                 (DATE_PART('day', '${todayDate}'::timestamp - "GuestRecord"."checkinDate"::timestamp) + 1)
               )
             `),
-            'totalBill'
-          ]
+            "totalBill",
+          ],
         ],
         where: {
           id: guestId,
@@ -665,14 +990,14 @@ export const updateGuestRecord = async (req, res) => {
             { checkoutDate: null },
             {
               checkoutDate: {
-                [Op.lte]: todayDate
-              }
-            }
-          ]
+                [Op.lte]: todayDate,
+              },
+            },
+          ],
         },
-        raw: true
+        raw: true,
       });
-      
+
       // Get food expenses for this guest from checkin_date to today
       const guestFoodExpenses = await GuestExpense.findAll({
         attributes: [
@@ -680,19 +1005,19 @@ export const updateGuestRecord = async (req, res) => {
             sequelize.literal(`
               SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
             `),
-            'totalFoodExpenses'
-          ]
+            "totalFoodExpenses",
+          ],
         ],
         where: {
           bookingId: guestId,
           createdAt: {
             [Op.gte]: checkinDate,
-            [Op.lte]: sequelize.literal(`'${todayDate} 23:59:59'`)
-          }
+            [Op.lte]: sequelize.literal(`'${todayDate} 23:59:59'`),
+          },
         },
-        raw: true
+        raw: true,
       });
-      
+
       // Get payments for this guest from checkin_date to today
       const guestPayments = await GuestTransaction.findAll({
         attributes: [
@@ -700,25 +1025,30 @@ export const updateGuestRecord = async (req, res) => {
             sequelize.literal(`
               SUM(CASE WHEN "GuestTransaction"."paymentType" IN ('partial', 'advance', 'final') THEN "GuestTransaction"."amount" ELSE 0 END)
             `),
-            'totalPayments'
-          ]
+            "totalPayments",
+          ],
         ],
         where: {
           bookingId: guestId,
           createdAt: {
             [Op.gte]: checkinDate,
-            [Op.lte]: sequelize.literal(`'${todayDate} 23:59:59'`)
-          }
+            [Op.lte]: sequelize.literal(`'${todayDate} 23:59:59'`),
+          },
         },
-        raw: true
+        raw: true,
       });
-      
+
       // Calculate pending amount for this guest
       const totalBill = parseFloat(guestBills[0]?.totalBill || 0);
-      const totalFoodExpenses = parseFloat(guestFoodExpenses[0]?.totalFoodExpenses || 0);
+      const totalFoodExpenses = parseFloat(
+        guestFoodExpenses[0]?.totalFoodExpenses || 0
+      );
       const totalPayments = parseFloat(guestPayments[0]?.totalPayments || 0);
-      
-      pendingAmount = Math.max(0, (totalBill + totalFoodExpenses) - totalPayments);
+
+      pendingAmount = Math.max(
+        0,
+        totalBill + totalFoodExpenses - totalPayments
+      );
     }
 
     // Calculate today's total sales (matching getGuestRecordsByHotel)
@@ -728,35 +1058,29 @@ export const updateGuestRecord = async (req, res) => {
           sequelize.literal(`
             SUM("GuestRecord"."bill")
           `),
-          'totalBillSales'
-        ]
+          "totalBillSales",
+        ],
       ],
       where: {
         hotelId: updatedRecord.hotelId,
         checkinDate: { [Op.ne]: null },
-        [Op.or]: [
-          { checkoutDate: null },
-          { checkoutDate: todayDate }
-        ]
+        [Op.or]: [{ checkoutDate: null }, { checkoutDate: todayDate }],
       },
-      raw: true
+      raw: true,
     });
 
     // Get all guest IDs for today for accurate sales calculation
     const allGuestIdsForDate = await GuestRecord.findAll({
-      attributes: ['id'],
+      attributes: ["id"],
       where: {
         hotelId: updatedRecord.hotelId,
         checkinDate: { [Op.ne]: null },
-        [Op.or]: [
-          { checkoutDate: null },
-          { checkoutDate: todayDate }
-        ]
+        [Op.or]: [{ checkoutDate: null }, { checkoutDate: todayDate }],
       },
-      raw: true
+      raw: true,
     });
 
-    const allGuestIds = allGuestIdsForDate.map(record => record.id);
+    const allGuestIds = allGuestIdsForDate.map((record) => record.id);
 
     const todayFoodSales = await GuestExpense.findAll({
       attributes: [
@@ -764,13 +1088,13 @@ export const updateGuestRecord = async (req, res) => {
           sequelize.literal(`
             SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
           `),
-          'totalFoodSales'
-        ]
+          "totalFoodSales",
+        ],
       ],
       where: {
-        bookingId: { [Op.in]: allGuestIds }
+        bookingId: { [Op.in]: allGuestIds },
       },
-      raw: true
+      raw: true,
     });
 
     const totalBillSales = parseFloat(todaySales[0]?.totalBillSales || 0);
@@ -780,10 +1104,10 @@ export const updateGuestRecord = async (req, res) => {
     // Process record to include transactions, expenses, and pending amounts (matching getGuestRecordsByHotel)
     const recordData = updatedRecord.toJSON();
     const recordId = recordData.id;
-    
+
     // Get transactions for this guest (empty array if none)
     const guestTransactions = transactionsByBooking[recordId] || [];
-    
+
     // Get expenses for this guest (empty array if none)
     const guestExpenses = consolidatedExpensesByBooking[recordId] || [];
 
@@ -792,19 +1116,31 @@ export const updateGuestRecord = async (req, res) => {
       ...recordData,
       transactions: guestTransactions,
       expenses: guestExpenses,
-      pendingAmount: pendingAmount
+      pendingAmount: pendingAmount,
     });
 
     // Prepare response message based on what was updated and filter
     let message = `Guest record updated successfully (${filter})`;
     if (result.transactionUpdated) {
-      message += ', existing transaction updated';
+      message += ", existing transaction updated";
     }
     if (result.expenseUpdated) {
-      message += ', existing expense updated';
+      message += ", existing expense updated";
+    }
+    if (result.pendingPaymentAction) {
+      const { action, amount } = result.pendingPaymentAction;
+      if (action === "created") {
+        message += `, pending payment entry created (₹${amount})`;
+      } else if (action === "updated") {
+        message += `, pending payment updated (₹${amount})`;
+      } else if (action === "deleted") {
+        message += ", pending payment cleared";
+      }
     }
 
-    console.log(`Guest record update completed successfully for guest ${id} with filter ${filter}. Message: ${message}`);
+    console.log(
+      `Guest record update completed successfully for guest ${id} with filter ${filter}. Message: ${message}`
+    );
 
     res.json({
       success: true,
@@ -814,51 +1150,55 @@ export const updateGuestRecord = async (req, res) => {
         currentPage: 1,
         totalPages: 1,
         totalRecords: 1,
-        recordsPerPage: 1
+        recordsPerPage: 1,
       },
-      todayTotalSales: todayTotalSales
+      todayTotalSales: todayTotalSales,
     });
-
   } catch (error) {
-    console.error('Update guest record error:', error);
+    console.error("Update guest record error:", error);
 
-    if (error.name === 'SequelizeValidationError') {
+    if (error.name === "SequelizeValidationError") {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.errors.map(err => err.message).join(', ')
+        error: "Validation error",
+        message: error.errors.map((err) => err.message).join(", "),
       });
     }
 
-    if (error.name === 'SequelizeForeignKeyConstraintError') {
+    if (error.name === "SequelizeForeignKeyConstraintError") {
       return res.status(400).json({
         success: false,
-        error: 'Reference error',
-        message: 'One or more referenced records do not exist'
+        error: "Reference error",
+        message: "One or more referenced records do not exist",
       });
     }
 
-    if (error.name === 'SequelizeUniqueConstraintError') {
+    if (error.name === "SequelizeUniqueConstraintError") {
       return res.status(400).json({
         success: false,
-        error: 'Duplicate error',
-        message: 'A record with this information already exists'
+        error: "Duplicate error",
+        message: "A record with this information already exists",
       });
     }
 
     // Handle custom validation errors from model hooks
-    if (error.message && error.message.includes('Check-out date/time must be after check-in date/time')) {
+    if (
+      error.message &&
+      error.message.includes(
+        "Check-out date/time must be after check-in date/time"
+      )
+    ) {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.message
+        error: "Validation error",
+        message: error.message,
       });
     }
 
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to update guest record'
+      error: "Internal server error",
+      message: "Failed to update guest record",
     });
   }
 };
@@ -875,33 +1215,33 @@ export const deleteGuestRecord = async (req, res) => {
     if (!guestRecord) {
       return res.status(404).json({
         success: false,
-        error: 'Record not found',
-        message: 'Guest record not found'
+        error: "Record not found",
+        message: "Guest record not found",
       });
     }
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: guestRecord.hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this guest record'
+          error: "Access denied",
+          message: "You do not have access to this guest record",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can delete guest records'
+        error: "Access denied",
+        message: "Only managers and admins can delete guest records",
       });
     }
 
@@ -910,15 +1250,14 @@ export const deleteGuestRecord = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Guest record deleted successfully'
+      message: "Guest record deleted successfully",
     });
-
   } catch (error) {
-    console.error('Delete guest record error:', error);
+    console.error("Delete guest record error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to delete guest record'
+      error: "Internal server error",
+      message: "Failed to delete guest record",
     });
   }
 };
@@ -932,7 +1271,7 @@ export const searchGuestRecords = async (req, res) => {
       startDate,
       endDate,
       page = 1,
-      limit = 10
+      limit = 10,
     } = req.query;
 
     const userId = req.user.id;
@@ -943,40 +1282,40 @@ export const searchGuestRecords = async (req, res) => {
     let hotelIds = [];
 
     // Filter by hotel access
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignments = await HotelManager.findAll({
         where: {
           managerId: userId,
-          status: 'active'
+          status: "active",
         },
-        attributes: ['hotelId']
+        attributes: ["hotelId"],
       });
-      hotelIds = assignments.map(assignment => assignment.hotelId);
-      
+      hotelIds = assignments.map((assignment) => assignment.hotelId);
+
       if (hotelIds.length === 0) {
         return res.status(403).json({
           success: false,
-          error: 'No access',
-          message: 'You do not have access to any hotels'
+          error: "No access",
+          message: "You do not have access to any hotels",
         });
       }
-      
+
       whereClause.hotelId = { [Op.in]: hotelIds };
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'You do not have permission to search guest records'
+        error: "Access denied",
+        message: "You do not have permission to search guest records",
       });
     }
 
     // Apply filters
     if (hotelId) {
-      if (userRole === 'manager' && !hotelIds.includes(hotelId)) {
+      if (userRole === "manager" && !hotelIds.includes(hotelId)) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
       whereClause.hotelId = hotelId;
@@ -984,7 +1323,7 @@ export const searchGuestRecords = async (req, res) => {
 
     if (startDate && endDate) {
       whereClause.date = {
-        [Op.between]: [startDate, endDate]
+        [Op.between]: [startDate, endDate],
       };
     }
 
@@ -994,7 +1333,7 @@ export const searchGuestRecords = async (req, res) => {
         { guestName: { [Op.iLike]: `%${query}%` } },
         { phoneNo: { [Op.iLike]: `%${query}%` } },
         { roomNo: { [Op.iLike]: `%${query}%` } },
-        { serialNo: { [Op.iLike]: `%${query}%` } }
+        { serialNo: { [Op.iLike]: `%${query}%` } },
       ];
     }
 
@@ -1004,44 +1343,45 @@ export const searchGuestRecords = async (req, res) => {
     // Search records
     const { count, rows } = await GuestRecord.findAndCountAll({
       where: whereClause,
-      include: [{
-        model: Hotel,
-        as: 'hotel',
-        attributes: ['id', 'name']
-      }],
-      order: [['createdAt', 'DESC']],
+      include: [
+        {
+          model: Hotel,
+          as: "hotel",
+          attributes: ["id", "name"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
       limit: parseInt(limit),
-      offset: offset
+      offset: offset,
     });
 
     const totalPages = Math.ceil(count / limit);
 
     // Convert decimal fields to numbers
-    const processedRecords = rows.map(record => {
+    const processedRecords = rows.map((record) => {
       const recordData = record.toJSON();
-      return convertNestedDecimalFields(recordData, ['bill', 'rent']);
+      return convertNestedDecimalFields(recordData, ["bill", "rent"]);
     });
 
     res.json({
       success: true,
-      message: 'Search completed successfully',
+      message: "Search completed successfully",
       data: {
         records: processedRecords,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
           totalRecords: count,
-          recordsPerPage: parseInt(limit)
-        }
-      }
+          recordsPerPage: parseInt(limit),
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Search guest records error:', error);
+    console.error("Search guest records error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to search guest records'
+      error: "Internal server error",
+      message: "Failed to search guest records",
     });
   }
 };
@@ -1056,54 +1396,54 @@ export const getGuestRecordsByDateRange = async (req, res) => {
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: 'Missing parameters',
-        message: 'Start date and end date are required'
+        error: "Missing parameters",
+        message: "Start date and end date are required",
       });
     }
 
     // Build where clause
     let whereClause = {
       date: {
-        [Op.between]: [startDate, endDate]
-      }
+        [Op.between]: [startDate, endDate],
+      },
     };
     let hotelIds = [];
 
     // Filter by hotel access
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignments = await HotelManager.findAll({
         where: {
           managerId: userId,
-          status: 'active'
+          status: "active",
         },
-        attributes: ['hotelId']
+        attributes: ["hotelId"],
       });
-      hotelIds = assignments.map(assignment => assignment.hotelId);
-      
+      hotelIds = assignments.map((assignment) => assignment.hotelId);
+
       if (hotelIds.length === 0) {
         return res.status(403).json({
           success: false,
-          error: 'No access',
-          message: 'You do not have access to any hotels'
+          error: "No access",
+          message: "You do not have access to any hotels",
         });
       }
-      
+
       whereClause.hotelId = { [Op.in]: hotelIds };
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'You do not have permission to view guest records'
+        error: "Access denied",
+        message: "You do not have permission to view guest records",
       });
     }
 
     // Apply hotel filter
     if (hotelId) {
-      if (userRole === 'manager' && !hotelIds.includes(hotelId)) {
+      if (userRole === "manager" && !hotelIds.includes(hotelId)) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
       whereClause.hotelId = hotelId;
@@ -1112,46 +1452,62 @@ export const getGuestRecordsByDateRange = async (req, res) => {
     // Fetch records
     const records = await GuestRecord.findAll({
       where: whereClause,
-      include: [{
-        model: Hotel,
-        as: 'hotel',
-        attributes: ['id', 'name']
-      }],
-      order: [['date', 'ASC']]
+      include: [
+        {
+          model: Hotel,
+          as: "hotel",
+          attributes: ["id", "name"],
+        },
+      ],
+      order: [["date", "ASC"]],
     });
 
     // Calculate summary statistics
     const summary = {
       totalRecords: records.length,
-      totalBill: records.reduce((sum, record) => sum + parseFloat(record.bill || 0), 0),
-      totalPending: records.reduce((sum, record) => sum + parseFloat(record.pending || 0), 0),
-      totalAdvancePayment: records.reduce((sum, record) => sum + parseFloat(record.advancePayment || 0), 0),
-      totalRent: records.reduce((sum, record) => sum + parseFloat(record.rent || 0), 0),
-      totalFood: records.reduce((sum, record) => sum + parseFloat(record.food || 0), 0)
+      totalBill: records.reduce(
+        (sum, record) => sum + parseFloat(record.bill || 0),
+        0
+      ),
+      totalPending: records.reduce(
+        (sum, record) => sum + parseFloat(record.pending || 0),
+        0
+      ),
+      totalAdvancePayment: records.reduce(
+        (sum, record) => sum + parseFloat(record.advancePayment || 0),
+        0
+      ),
+      totalRent: records.reduce(
+        (sum, record) => sum + parseFloat(record.rent || 0),
+        0
+      ),
+      totalFood: records.reduce(
+        (sum, record) => sum + parseFloat(record.food || 0),
+        0
+      ),
     };
 
     // Convert decimal fields to numbers
-    const processedRecords = records.map(record => {
+    const processedRecords = records.map((record) => {
       const recordData = record.toJSON();
-      return convertDecimalFields(recordData, ['bill', 'rent']);
+      return convertDecimalFields(recordData, ["bill", "rent"]);
     });
 
     res.json({
       success: true,
-      message: 'Guest records retrieved successfully',
+      message: "Guest records retrieved successfully",
       data: {
         records: processedRecords,
         summary,
-        dateRange: { startDate, endDate }
-      }
+        dateRange: { startDate, endDate },
+      },
     });
-
   } catch (error) {
-    console.error('Get guest records by date range error:', error);
+    console.error("Get guest records by date range error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve guest records'
+      error: "Internal server error",
+      message: "Failed to retrieve guest records",
     });
   }
 };
@@ -1165,27 +1521,27 @@ export const getGuestRecordsByHotel = async (req, res) => {
     const userRole = req.user.role;
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'You do not have permission to view guest records'
+        error: "Access denied",
+        message: "You do not have permission to view guest records",
       });
     }
 
@@ -1194,13 +1550,13 @@ export const getGuestRecordsByHotel = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'The specified hotel does not exist'
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
       });
     }
 
     // Get the target date - use provided date filter or today's date
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || new Date().toISOString().split("T")[0];
 
     // Calculate pagination
     const offset = (page - 1) * limit;
@@ -1213,31 +1569,25 @@ export const getGuestRecordsByHotel = async (req, res) => {
     const { count, rows } = await GuestRecord.findAndCountAll({
       where: {
         hotelId,
-        checkinDate: { 
-          [Op.and]: [
-            { [Op.ne]: null },
-            { [Op.lte]: targetDate }
-          ]
+        checkinDate: {
+          [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: targetDate }],
         },
-        [Op.or]: [
-          { checkoutDate: null },
-          { checkoutDate: targetDate }
-        ]
+        [Op.or]: [{ checkoutDate: null }, { checkoutDate: targetDate }],
       },
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
-        }
+          as: "hotel",
+          attributes: ["id", "name"],
+        },
       ],
-      order: [['createdAt', 'DESC']],
+      order: [["createdAt", "DESC"]],
       limit: parseInt(limit),
-      offset: offset
+      offset: offset,
     });
 
     // Get all guest IDs for fetching transactions and expenses
-    const guestIds = rows.map(record => record.id);
+    const guestIds = rows.map((record) => record.id);
 
     // Fetch transactions for the target date based on createdAt field
     // Fix: Remove 'raw: true' to allow Sequelize to hydrate associations (PaymentMode)
@@ -1246,19 +1596,19 @@ export const getGuestRecordsByHotel = async (req, res) => {
         bookingId: { [Op.in]: guestIds },
         [Op.and]: [
           sequelize.where(
-            sequelize.fn('DATE', sequelize.col('GuestTransaction.createdAt')),
+            sequelize.fn("DATE", sequelize.col("GuestTransaction.createdAt")),
             targetDate
-          )
-        ]
+          ),
+        ],
       },
       include: [
         {
           model: PaymentMode,
-          as: 'paymentMode',
-          attributes: ['id', 'paymentMode']
-        }
+          as: "paymentMode",
+          attributes: ["id", "paymentMode"],
+        },
       ],
-      attributes: ['bookingId', 'amount', 'paymentType', 'paymentModeId']
+      attributes: ["bookingId", "amount", "paymentType", "paymentModeId"],
       // Do not use raw: true so that paymentMode is properly populated
     });
 
@@ -1268,82 +1618,88 @@ export const getGuestRecordsByHotel = async (req, res) => {
         bookingId: { [Op.in]: guestIds },
         [Op.and]: [
           sequelize.where(
-            sequelize.fn('DATE', sequelize.col('GuestExpense.createdAt')),
+            sequelize.fn("DATE", sequelize.col("GuestExpense.createdAt")),
             targetDate
-          )
-        ]
+          ),
+        ],
       },
-      attributes: ['bookingId', 'expenseType', 'amount'],
-      raw: true
+      attributes: ["bookingId", "expenseType", "amount"],
+      raw: true,
     });
 
     // Group transactions by bookingId
     const transactionsByBooking = {};
-    transactions.forEach(transaction => {
+    transactions.forEach((transaction) => {
       if (!transactionsByBooking[transaction.bookingId]) {
         transactionsByBooking[transaction.bookingId] = [];
       }
       transactionsByBooking[transaction.bookingId].push({
         amount: transaction.amount,
         paymentType: transaction.paymentType,
-        paymentMode: transaction.paymentMode ? transaction.paymentMode.paymentMode : null
+        paymentMode: transaction.paymentMode
+          ? transaction.paymentMode.paymentMode
+          : null,
       });
     });
 
     // Group and consolidate expenses by bookingId and expenseType
     // If multiple entries with same expense type, add the amounts and make one entry
     const expensesByBooking = {};
-    expenses.forEach(expense => {
+    expenses.forEach((expense) => {
       if (!expensesByBooking[expense.bookingId]) {
         expensesByBooking[expense.bookingId] = {};
       }
-      
+
       if (!expensesByBooking[expense.bookingId][expense.expenseType]) {
         expensesByBooking[expense.bookingId][expense.expenseType] = 0;
       }
-      
+
       // Add amounts for the same expense type
-      expensesByBooking[expense.bookingId][expense.expenseType] += parseFloat(expense.amount || 0);
+      expensesByBooking[expense.bookingId][expense.expenseType] += parseFloat(
+        expense.amount || 0
+      );
     });
 
     // Convert consolidated expenses to array format
     const consolidatedExpensesByBooking = {};
-    Object.keys(expensesByBooking).forEach(bookingId => {
-      consolidatedExpensesByBooking[bookingId] = Object.keys(expensesByBooking[bookingId]).map(expenseType => ({
+    Object.keys(expensesByBooking).forEach((bookingId) => {
+      consolidatedExpensesByBooking[bookingId] = Object.keys(
+        expensesByBooking[bookingId]
+      ).map((expenseType) => ({
         expenseType: expenseType,
-        amount: expensesByBooking[bookingId][expenseType]
+        amount: expensesByBooking[bookingId][expenseType],
       }));
     });
 
     // Calculate pending amounts for each guest
     // Pending = (Sum of bills from checkin_date to today) + (Sum of food expenses from checkin_date to today) - (Sum of transaction amounts of type partial, advance, or final from checkin_date to today)
-    
+
     // For each guest, we need to get the total bill from checkin_date to target date
     const guestRecords = await GuestRecord.findAll({
-      attributes: ['id', 'checkinDate'],
+      attributes: ["id", "checkinDate"],
       where: {
-        id: { [Op.in]: guestIds }
+        id: { [Op.in]: guestIds },
       },
-      raw: true
+      raw: true,
     });
 
     // Create a map of guest checkin dates
     const guestCheckinDates = {};
-    guestRecords.forEach(record => {
+    guestRecords.forEach((record) => {
       guestCheckinDates[record.id] = record.checkinDate;
     });
 
     // Calculate pending amounts for each guest individually
     // This approach ensures we get the correct cumulative amounts from checkin_date to target_date
     const pendingAmountMap = {};
-    
+
     for (const guestId of guestIds) {
       // Get the guest's checkin date
-      const guestRecord = guestRecords.find(record => record.id === guestId);
+      const guestRecord = guestRecords.find((record) => record.id === guestId);
       if (!guestRecord || !guestRecord.checkinDate) continue;
-      
+
       const checkinDate = guestRecord.checkinDate;
-      
+
       // Get all bills for this guest from checkin_date to target_date
       const guestBills = await GuestRecord.findAll({
         attributes: [
@@ -1354,29 +1710,26 @@ export const getGuestRecordsByHotel = async (req, res) => {
                 (DATE_PART('day', '${targetDate}'::timestamp - "GuestRecord"."checkinDate"::timestamp) + 1)
               )
             `),
-            'totalBill'
-          ]
+            "totalBill",
+          ],
         ],
         where: {
           id: guestId,
-          checkinDate: { 
-            [Op.and]: [
-              { [Op.ne]: null },
-              { [Op.lte]: targetDate }
-            ]
+          checkinDate: {
+            [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: targetDate }],
           },
           [Op.or]: [
             { checkoutDate: null },
             {
               checkoutDate: {
-                [Op.lte]: targetDate
-              }
-            }
-          ]
+                [Op.lte]: targetDate,
+              },
+            },
+          ],
         },
-        raw: true
+        raw: true,
       });
-      
+
       // Get food expenses for this guest from checkin_date to target_date
       const guestFoodExpenses = await GuestExpense.findAll({
         attributes: [
@@ -1384,19 +1737,19 @@ export const getGuestRecordsByHotel = async (req, res) => {
             sequelize.literal(`
               SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
             `),
-            'totalFoodExpenses'
-          ]
+            "totalFoodExpenses",
+          ],
         ],
         where: {
           bookingId: guestId,
           createdAt: {
             [Op.gte]: checkinDate,
-            [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`)
-          }
+            [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`),
+          },
         },
-        raw: true
+        raw: true,
       });
-      
+
       // Get payments for this guest from checkin_date to target_date
       const guestPayments = await GuestTransaction.findAll({
         attributes: [
@@ -1404,69 +1757,74 @@ export const getGuestRecordsByHotel = async (req, res) => {
             sequelize.literal(`
               SUM(CASE WHEN "GuestTransaction"."paymentType" IN ('partial', 'advance', 'final') THEN "GuestTransaction"."amount" ELSE 0 END)
             `),
-            'totalPayments'
-          ]
+            "totalPayments",
+          ],
         ],
         where: {
           bookingId: guestId,
           createdAt: {
             [Op.gte]: checkinDate,
-            [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`)
-          }
+            [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`),
+          },
         },
-        raw: true
+        raw: true,
       });
-      
+
       // Calculate pending amount for this guest
       const totalBill = parseFloat(guestBills[0]?.totalBill || 0);
-      const totalFoodExpenses = parseFloat(guestFoodExpenses[0]?.totalFoodExpenses || 0);
+      const totalFoodExpenses = parseFloat(
+        guestFoodExpenses[0]?.totalFoodExpenses || 0
+      );
       const totalPayments = parseFloat(guestPayments[0]?.totalPayments || 0);
-      
-      pendingAmountMap[guestId] = Math.max(0, (totalBill + totalFoodExpenses) - totalPayments);
+
+      pendingAmountMap[guestId] = Math.max(
+        0,
+        totalBill + totalFoodExpenses - totalPayments
+      );
     }
 
     // Get today's food expenses and payments for display purposes
     // Note: The pending amounts are calculated above using cumulative data from checkin_date
     const foodExpenses = await GuestExpense.findAll({
       attributes: [
-        'bookingId',
+        "bookingId",
         [
           sequelize.literal(`
             SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
           `),
-          'totalFoodExpenses'
-        ]
+          "totalFoodExpenses",
+        ],
       ],
       where: {
         bookingId: { [Op.in]: guestIds },
         createdAt: {
           [Op.gte]: sequelize.literal(`'${targetDate} 00:00:00'`),
-          [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`)
-        }
+          [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`),
+        },
       },
-      group: ['bookingId'],
-      raw: true
+      group: ["bookingId"],
+      raw: true,
     });
 
     const totalPayments = await GuestTransaction.findAll({
       attributes: [
-        'bookingId',
+        "bookingId",
         [
           sequelize.literal(`
             SUM(CASE WHEN "GuestTransaction"."paymentType" IN ('partial', 'advance', 'final') THEN "GuestTransaction"."amount" ELSE 0 END)
           `),
-          'totalPayments'
-        ]
+          "totalPayments",
+        ],
       ],
       where: {
         bookingId: { [Op.in]: guestIds },
         createdAt: {
           [Op.gte]: sequelize.literal(`'${targetDate} 00:00:00'`),
-          [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`)
-        }
+          [Op.lte]: sequelize.literal(`'${targetDate} 23:59:59'`),
+        },
       },
-      group: ['bookingId'],
-      raw: true
+      group: ["bookingId"],
+      raw: true,
     });
 
     // The pendingAmountMap is already calculated above in the loop
@@ -1475,12 +1833,12 @@ export const getGuestRecordsByHotel = async (req, res) => {
     // The pending amounts are already calculated above using cumulative data from checkin_date
     const foodExpensesMap = {};
     const totalPaymentsMap = {};
-    
-    foodExpenses.forEach(item => {
+
+    foodExpenses.forEach((item) => {
       foodExpensesMap[item.bookingId] = parseFloat(item.totalFoodExpenses || 0);
     });
 
-    totalPayments.forEach(item => {
+    totalPayments.forEach((item) => {
       totalPaymentsMap[item.bookingId] = parseFloat(item.totalPayments || 0);
     });
 
@@ -1491,45 +1849,33 @@ export const getGuestRecordsByHotel = async (req, res) => {
           sequelize.literal(`
             SUM("GuestRecord"."bill")
           `),
-          'totalBillSales'
-        ]
+          "totalBillSales",
+        ],
       ],
       where: {
         hotelId,
-        checkinDate: { 
-          [Op.and]: [
-            { [Op.ne]: null },
-            { [Op.lte]: targetDate }
-          ]
+        checkinDate: {
+          [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: targetDate }],
         },
-        [Op.or]: [
-          { checkoutDate: null },
-          { checkoutDate: targetDate }
-        ]
+        [Op.or]: [{ checkoutDate: null }, { checkoutDate: targetDate }],
       },
-      raw: true
+      raw: true,
     });
 
     // Get all guest IDs for the target date (not just the current page) for accurate sales calculation
     const allGuestIdsForDate = await GuestRecord.findAll({
-      attributes: ['id'],
+      attributes: ["id"],
       where: {
         hotelId,
-        checkinDate: { 
-          [Op.and]: [
-            { [Op.ne]: null },
-            { [Op.lte]: targetDate }
-          ]
+        checkinDate: {
+          [Op.and]: [{ [Op.ne]: null }, { [Op.lte]: targetDate }],
         },
-        [Op.or]: [
-          { checkoutDate: null },
-          { checkoutDate: targetDate }
-        ]
+        [Op.or]: [{ checkoutDate: null }, { checkoutDate: targetDate }],
       },
-      raw: true
+      raw: true,
     });
 
-    const allGuestIds = allGuestIdsForDate.map(record => record.id);
+    const allGuestIds = allGuestIdsForDate.map((record) => record.id);
 
     const todayFoodSales = await GuestExpense.findAll({
       attributes: [
@@ -1537,13 +1883,13 @@ export const getGuestRecordsByHotel = async (req, res) => {
           sequelize.literal(`
             SUM(CASE WHEN "GuestExpense"."expenseType" = 'food' THEN "GuestExpense"."amount" ELSE 0 END)
           `),
-          'totalFoodSales'
-        ]
+          "totalFoodSales",
+        ],
       ],
       where: {
-        bookingId: { [Op.in]: allGuestIds }
+        bookingId: { [Op.in]: allGuestIds },
       },
-      raw: true
+      raw: true,
     });
 
     const totalBillSales = parseFloat(todaySales[0]?.totalBillSales || 0);
@@ -1551,16 +1897,16 @@ export const getGuestRecordsByHotel = async (req, res) => {
     const todayTotalSales = totalBillSales + totalFoodSales;
 
     // Process records to include transactions, expenses, and pending amounts
-    const processedRecords = rows.map(record => {
+    const processedRecords = rows.map((record) => {
       const recordData = record.toJSON();
       const recordId = recordData.id;
-      
+
       // Get transactions for this guest (empty array if none)
       const guestTransactions = transactionsByBooking[recordId] || [];
-      
+
       // Get expenses for this guest (empty array if none)
       const guestExpenses = consolidatedExpensesByBooking[recordId] || [];
-      
+
       // Get the pending amount calculated from checkin_date to target_date
       const pendingAmount = pendingAmountMap[recordId] || 0;
 
@@ -1569,7 +1915,7 @@ export const getGuestRecordsByHotel = async (req, res) => {
         ...recordData,
         transactions: guestTransactions,
         expenses: guestExpenses,
-        pendingAmount: pendingAmount
+        pendingAmount: pendingAmount,
       });
     });
 
@@ -1577,24 +1923,22 @@ export const getGuestRecordsByHotel = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Guest records retrieved successfully',
+      message: "Guest records retrieved successfully",
       records: processedRecords,
       pagination: {
         currentPage: parseInt(page),
         totalPages,
         totalRecords: count,
-        recordsPerPage: parseInt(limit)
+        recordsPerPage: parseInt(limit),
       },
-      todayTotalSales: todayTotalSales
+      todayTotalSales: todayTotalSales,
     });
-
   } catch (error) {
-    console.error('Get guest records by hotel error:', error);
+    console.error("Get guest records by hotel error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve guest records'
+      error: "Internal server error",
+      message: "Failed to retrieve guest records",
     });
   }
 };
-

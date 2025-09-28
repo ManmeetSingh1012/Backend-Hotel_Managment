@@ -4,7 +4,7 @@ import { Op } from 'sequelize';
 // Create hotel room category
 export const createHotelRoomCategory = async (req, res) => {
   try {
-    const { categoryName, hotelId } = req.body;
+    const { categoryName, hotelId , roomCategoryPricing} = req.body;
 
     // Check if hotel exists
     const hotel = await Hotel.findByPk(hotelId);
@@ -34,7 +34,8 @@ export const createHotelRoomCategory = async (req, res) => {
 
     const category = await HotelRoomCategory.create({
       categoryName: categoryName.trim(),
-      hotelId: hotelId
+      hotelId: hotelId,
+      roomCategoryPricing: roomCategoryPricing
     });
 
     res.status(201).json({

@@ -1,41 +1,42 @@
-import { Expense, Hotel, HotelManager, ExpenseMode, sequelize } from '../models/index.js';
-import { Op } from 'sequelize';
+import {
+  Expense,
+  Hotel,
+  HotelManager,
+  ExpenseMode,
+  sequelize,
+} from "../models/index.js";
+import { Op } from "sequelize";
 
 // Create a new expense (manager only for assigned hotels, admin for all)
 export const createExpense = async (req, res) => {
   try {
-    const {
-      hotelId,
-      expenseModeId,
-      amount,
-      description
-    } = req.body;
+    const { hotelId, expenseModeId, amount, description } = req.body;
 
     const userId = req.user.id;
     const userRole = req.user.role;
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can create expenses'
+        error: "Access denied",
+        message: "Only managers and admins can create expenses",
       });
     }
 
@@ -44,8 +45,8 @@ export const createExpense = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'The specified hotel does not exist'
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
       });
     }
 
@@ -54,8 +55,8 @@ export const createExpense = async (req, res) => {
     if (!expenseMode) {
       return res.status(404).json({
         success: false,
-        error: 'Expense mode not found',
-        message: 'The specified expense mode does not exist'
+        error: "Expense mode not found",
+        message: "The specified expense mode does not exist",
       });
     }
 
@@ -64,7 +65,7 @@ export const createExpense = async (req, res) => {
       hotelId,
       expenseModeId,
       amount,
-      description
+      description,
     });
 
     // Fetch the created expense with hotel and expense mode details
@@ -72,29 +73,28 @@ export const createExpense = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: ExpenseMode,
-          as: 'expenseMode',
-          attributes: ['id', 'expenseMode']
-        }
-      ]
+          as: "expenseMode",
+          attributes: ["id", "expenseMode"],
+        },
+      ],
     });
 
     res.status(201).json({
       success: true,
-      message: 'Expense created successfully',
-      data: createdExpense
+      message: "Expense created successfully",
+      data: createdExpense,
     });
-
   } catch (error) {
-    console.error('Create expense error:', error);
+    console.error("Create expense error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to create expense'
+      error: "Internal server error",
+      message: "Failed to create expense",
     });
   }
 };
@@ -103,11 +103,7 @@ export const createExpense = async (req, res) => {
 export const updateExpense = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      expenseModeId,
-      amount,
-      description
-    } = req.body;
+    const { expenseModeId, amount, description } = req.body;
 
     const userId = req.user.id;
     const userRole = req.user.role;
@@ -117,33 +113,33 @@ export const updateExpense = async (req, res) => {
     if (!expense) {
       return res.status(404).json({
         success: false,
-        error: 'Expense not found',
-        message: 'The specified expense does not exist'
+        error: "Expense not found",
+        message: "The specified expense does not exist",
       });
     }
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: expense.hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this expense'
+          error: "Access denied",
+          message: "You do not have access to this expense",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can update expenses'
+        error: "Access denied",
+        message: "Only managers and admins can update expenses",
       });
     }
 
@@ -153,8 +149,8 @@ export const updateExpense = async (req, res) => {
       if (!expenseMode) {
         return res.status(404).json({
           success: false,
-          error: 'Expense mode not found',
-          message: 'The specified expense mode does not exist'
+          error: "Expense mode not found",
+          message: "The specified expense mode does not exist",
         });
       }
     }
@@ -163,7 +159,7 @@ export const updateExpense = async (req, res) => {
     await expense.update({
       expenseModeId,
       amount,
-      description
+      description,
     });
 
     // Fetch updated expense with hotel and expense mode details
@@ -171,29 +167,28 @@ export const updateExpense = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: ExpenseMode,
-          as: 'expenseMode',
-          attributes: ['id', 'expenseMode']
-        }
-      ]
+          as: "expenseMode",
+          attributes: ["id", "expenseMode"],
+        },
+      ],
     });
 
     res.status(200).json({
       success: true,
-      message: 'Expense updated successfully',
-      data: updatedExpense
+      message: "Expense updated successfully",
+      data: updatedExpense,
     });
-
   } catch (error) {
-    console.error('Update expense error:', error);
+    console.error("Update expense error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to update expense'
+      error: "Internal server error",
+      message: "Failed to update expense",
     });
   }
 };
@@ -210,33 +205,33 @@ export const deleteExpense = async (req, res) => {
     if (!expense) {
       return res.status(404).json({
         success: false,
-        error: 'Expense not found',
-        message: 'The specified expense does not exist'
+        error: "Expense not found",
+        message: "The specified expense does not exist",
       });
     }
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: expense.hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this expense'
+          error: "Access denied",
+          message: "You do not have access to this expense",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can delete expenses'
+        error: "Access denied",
+        message: "Only managers and admins can delete expenses",
       });
     }
 
@@ -245,15 +240,14 @@ export const deleteExpense = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Expense deleted successfully'
+      message: "Expense deleted successfully",
     });
-
   } catch (error) {
-    console.error('Delete expense error:', error);
+    console.error("Delete expense error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to delete expense'
+      error: "Internal server error",
+      message: "Failed to delete expense",
     });
   }
 };
@@ -268,35 +262,35 @@ export const getExpensesByHotel = async (req, res) => {
       expenseModeId,
       startDate,
       endDate,
-      sortBy = 'createdAt',
-      sortOrder = 'DESC'
+      sortBy = "createdAt",
+      sortOrder = "DESC",
     } = req.query;
 
     const userId = req.user.id;
     const userRole = req.user.role;
 
     // Check authorization
-    if (userRole === 'manager') {
+    if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
           managerId: userId,
           hotelId: hotelId,
-          status: 'active'
-        }
+          status: "active",
+        },
       });
 
       if (!assignment) {
         return res.status(403).json({
           success: false,
-          error: 'Access denied',
-          message: 'You do not have access to this hotel'
+          error: "Access denied",
+          message: "You do not have access to this hotel",
         });
       }
-    } else if (userRole !== 'admin') {
+    } else if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: 'Access denied',
-        message: 'Only managers and admins can view expenses'
+        error: "Access denied",
+        message: "Only managers and admins can view expenses",
       });
     }
 
@@ -305,8 +299,8 @@ export const getExpensesByHotel = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'The specified hotel does not exist'
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
       });
     }
 
@@ -321,21 +315,29 @@ export const getExpensesByHotel = async (req, res) => {
     // Filter by date range
     if (startDate && endDate) {
       // Both start and end date present
-      whereClause.createdAt = { 
-        [Op.between]: [new Date(startDate), new Date(endDate)]
+      whereClause.createdAt = {
+        [Op.between]: [new Date(startDate), new Date(endDate)],
       };
     } else if (startDate && !endDate) {
       // Only start date present
       whereClause.createdAt = {
-        [Op.gte]: new Date(startDate)
+        [Op.gte]: new Date(startDate),
       };
     } else {
       // Default to current month
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      const endOfMonth = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999
+      );
       whereClause.createdAt = {
-        [Op.between]: [startOfMonth, endOfMonth]
+        [Op.between]: [startOfMonth, endOfMonth],
       };
     }
 
@@ -344,11 +346,15 @@ export const getExpensesByHotel = async (req, res) => {
     const limitNum = parseInt(limit);
 
     // Validate sort parameters
-    const allowedSortFields = ['createdAt', 'amount'];
-    const allowedSortOrders = ['ASC', 'DESC'];
-    
-    const finalSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
-    const finalSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
+    const allowedSortFields = ["createdAt", "amount"];
+    const allowedSortOrders = ["ASC", "DESC"];
+
+    const finalSortBy = allowedSortFields.includes(sortBy)
+      ? sortBy
+      : "createdAt";
+    const finalSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase())
+      ? sortOrder.toUpperCase()
+      : "DESC";
 
     // Get expenses with pagination
     const { count, rows: expenses } = await Expense.findAndCountAll({
@@ -356,18 +362,18 @@ export const getExpensesByHotel = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: ExpenseMode,
-          as: 'expenseMode',
-          attributes: ['expenseMode']
-        }
+          as: "expenseMode",
+          attributes: ["expenseMode"],
+        },
       ],
       order: [[finalSortBy, finalSortOrder]],
       limit: limitNum,
-      offset: offset
+      offset: offset,
     });
 
     // Calculate pagination info
@@ -377,11 +383,11 @@ export const getExpensesByHotel = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Hotel expenses retrieved successfully',
+      message: "Hotel expenses retrieved successfully",
       data: {
         hotel: {
           id: hotel.id,
-          name: hotel.name
+          name: hotel.name,
         },
         expenses,
         pagination: {
@@ -390,18 +396,16 @@ export const getExpensesByHotel = async (req, res) => {
           totalItems: count,
           itemsPerPage: limitNum,
           hasNextPage,
-          hasPrevPage
-        }
-      }
+          hasPrevPage,
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Get expenses by hotel error:', error);
+    console.error("Get expenses by hotel error:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve hotel expenses'
+      error: "Internal server error",
+      message: "Failed to retrieve hotel expenses",
     });
   }
 };
-

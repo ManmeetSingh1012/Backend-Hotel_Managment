@@ -1,14 +1,13 @@
-import express from 'express';
-import cors from 'cors';
+import express from "express";
+import cors from "cors";
 
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 
 // Import database configuration
-import cookieParser from 'cookie-parser';
-import { testConnection, syncDatabase } from './config/database.js';
-
+import cookieParser from "cookie-parser";
+import { testConnection, syncDatabase } from "./config/database.js";
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -21,91 +20,103 @@ const PORT = process.env.PORT || 5001;
 app.use(cookieParser());
 
 // CORS middleware for cross-origin requests
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    
-    "https://www.checkinsuite.in",
-    "https://www.checkinsuite.in/"
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cookie'],
-  exposedHeaders: ['Set-Cookie']
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+
+      "https://www.checkinsuite.in",
+      "https://www.checkinsuite.in/",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+      "Cookie",
+    ],
+    exposedHeaders: ["Set-Cookie"],
+  })
+);
 
 // Handle preflight requests
-app.options('*', cors());
+app.options("*", cors());
 
 // Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Import routes
-import authRoutes from './routes/auth.js';
-import hotelRoutes from './routes/hotelRoutes.js';
-import hotelManagerRoutes from './routes/hotelManagerRoutes.js';
-import guestRecordRoutes from './routes/guestRecordRoutes.js';
-import expenseRoutes from './routes/expenseRoutes.js';
-import paymentModeRoutes from './routes/paymentModeRoutes.js';
-import expenseModeRoutes from './routes/expenseModeRoute.js';
-import reportsRoutes from './routes/reportsRoutes.js';
-import menuRoutes from './routes/menuRoute.js';
-import hotelRoomRoutes from './routes/hotelRoomsRoute.js';
-import hotelRoomCategoryRoutes from './routes/hotelRoomCategoryRoutes.js';
+import authRoutes from "./routes/auth.js";
+import hotelRoutes from "./routes/hotelRoutes.js";
+import hotelManagerRoutes from "./routes/hotelManagerRoutes.js";
+import guestRecordRoutes from "./routes/guestRecordRoutes.js";
+import expenseRoutes from "./routes/expenseRoutes.js";
+import paymentModeRoutes from "./routes/paymentModeRoutes.js";
+import expenseModeRoutes from "./routes/expenseModeRoute.js";
+import reportsRoutes from "./routes/reportsRoutes.js";
+import menuRoutes from "./routes/menuRoute.js";
+import hotelRoomRoutes from "./routes/hotelRoomsRoute.js";
+import hotelRoomCategoryRoutes from "./routes/hotelRoomCategoryRoutes.js";
+import guestPendingPaymentRoutes from "./routes/guestPendingPaymentRoutes.js";
 
 // Test route to verify server is working
-app.get('/api/test', (req, res) => {
+app.get("/api/test", (req, res) => {
   res.json({
-    message: 'Hotel PMS Backend is running successfully!',
+    message: "Hotel PMS Backend is running successfully!",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
 // Health check route
-app.get('/api/health', (req, res) => {
+app.get("/api/health", (req, res) => {
   res.json({
-    status: 'OK',
+    status: "OK",
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
 // API routes
-app.use('/api/auth', authRoutes);
+app.use("/api/auth", authRoutes);
 
-app.use('/api/hotels', hotelRoutes);
-app.use('/api/hotel-managers', hotelManagerRoutes);
-app.use('/api/guest-records', guestRecordRoutes);
-app.use('/api/expenses', expenseRoutes);
-app.use('/api/payment-modes', paymentModeRoutes);
-app.use('/api/expense-modes', expenseModeRoutes);
-app.use('/api/reports', reportsRoutes);
-app.use('/api/menu', menuRoutes);
-app.use('/api/hotel-rooms', hotelRoomRoutes);
-app.use('/api/hotel-room-categories', hotelRoomCategoryRoutes);
+app.use("/api/hotels", hotelRoutes);
+app.use("/api/hotel-managers", hotelManagerRoutes);
+app.use("/api/guest-records", guestRecordRoutes);
+app.use("/api/expenses", expenseRoutes);
+app.use("/api/payment-modes", paymentModeRoutes);
+app.use("/api/expense-modes", expenseModeRoutes);
+app.use("/api/reports", reportsRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/hotel-rooms", hotelRoomRoutes);
+app.use("/api/hotel-room-categories", hotelRoomCategoryRoutes);
+app.use("/api/guest-pending-payments", guestPendingPaymentRoutes);
 // Root route
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   res.json({
-    message: 'Welcome to Hotel PMS Backend API',
-    version: '1.0.0',
+    message: "Welcome to Hotel PMS Backend API",
+    version: "1.0.0",
     endpoints: {
-      test: '/api/test',
-      health: '/api/health',
-      auth: '/api/auth',
-   
-      hotels: '/api/hotels',
-      hotelManagers: '/api/hotel-managers',
-      guestRecords: '/api/guest-records',
-      expenses: '/api/expenses',
-      paymentModes: '/api/payment-modes',
-      expenseModes: '/api/expense-modes',
-      reports: '/api/reports',
-      menus: '/api/menus',
-      hotelRooms: '/api/hotel-rooms',
-      hotelRoomCategories: '/api/hotel-room-categories'
-    }
+      test: "/api/test",
+      health: "/api/health",
+      auth: "/api/auth",
+
+      hotels: "/api/hotels",
+      hotelManagers: "/api/hotel-managers",
+      guestRecords: "/api/guest-records",
+      expenses: "/api/expenses",
+      paymentModes: "/api/payment-modes",
+      expenseModes: "/api/expense-modes",
+      reports: "/api/reports",
+      menus: "/api/menus",
+      hotelRooms: "/api/hotel-rooms",
+      hotelRoomCategories: "/api/hotel-room-categories",
+      guestPendingPayments: "/api/guest-pending-payments",
+    },
   });
 });
 
@@ -114,35 +125,36 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
     success: false,
-    error: 'Something went wrong!',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    error: "Something went wrong!",
+    message:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Internal server error",
   });
 });
 
 // 404 handler for undefined routes
-app.use('*', (req, res) => {
+app.use("*", (req, res) => {
   res.status(404).json({
     success: false,
-    error: 'Route not found',
-    message: `Cannot ${req.method} ${req.originalUrl}`
+    error: "Route not found",
+    message: `Cannot ${req.method} ${req.originalUrl}`,
   });
 });
 
 // Initialize database and start server
 const initializeServer = async () => {
   try {
-   
     await testConnection();
-  
-    //await syncDatabase("hotel_rooms");
+
+    //await syncDatabase("guest_pending_payments");
 
     // Start server
     app.listen(PORT, () => {
       console.log(`🚀 Hotel PMS Backend server is running on port ${PORT}`);
-     
     });
   } catch (error) {
-    console.error('❌ Failed to initialize server:', error);
+    console.error("❌ Failed to initialize server:", error);
     process.exit(1);
   }
 };
@@ -151,12 +163,12 @@ const initializeServer = async () => {
 initializeServer();
 
 // Graceful shutdown handling
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down gracefully");
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
+process.on("SIGINT", () => {
+  console.log("SIGINT received, shutting down gracefully");
   process.exit(0);
-}); 
+});

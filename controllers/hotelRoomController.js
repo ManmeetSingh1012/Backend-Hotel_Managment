@@ -1,5 +1,5 @@
-import { HotelRoom, Hotel, HotelRoomCategory } from '../models/index.js';
-import { Op } from 'sequelize';
+import { HotelRoom, Hotel, HotelRoomCategory } from "../models/index.js";
+import { Op } from "sequelize";
 
 // Create hotel room
 export const createHotelRoom = async (req, res) => {
@@ -11,8 +11,8 @@ export const createHotelRoom = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'The specified hotel does not exist'
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
       });
     }
 
@@ -21,8 +21,8 @@ export const createHotelRoom = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        error: 'Category not found',
-        message: 'The specified room category does not exist'
+        error: "Category not found",
+        message: "The specified room category does not exist",
       });
     }
 
@@ -30,15 +30,15 @@ export const createHotelRoom = async (req, res) => {
     const existingRoom = await HotelRoom.findOne({
       where: {
         roomNo: roomNo.trim(),
-        hotelId: hotelId
-      }
+        hotelId: hotelId,
+      },
     });
 
     if (existingRoom) {
       return res.status(409).json({
         success: false,
-        error: 'Room already exists',
-        message: 'A room with this number already exists for this hotel'
+        error: "Room already exists",
+        message: "A room with this number already exists for this hotel",
       });
     }
 
@@ -46,8 +46,8 @@ export const createHotelRoom = async (req, res) => {
       roomNo: roomNo.trim(),
       hotelId: hotelId,
       currentGuestName: currentGuestName ? currentGuestName.trim() : null,
-      status: status || 'empty',
-      categoryId: categoryId
+      status: status || "ready to occupy",
+      categoryId: categoryId,
     });
 
     // Fetch the created room with associations
@@ -55,28 +55,28 @@ export const createHotelRoom = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: HotelRoomCategory,
-          as: 'category',
-          attributes: ['id', 'categoryName']
-        }
-      ]
+          as: "category",
+          attributes: ["id", "categoryName"],
+        },
+      ],
     });
 
     res.status(201).json({
       success: true,
-      message: 'Hotel room created successfully',
-      data: createdRoom
+      message: "Hotel room created successfully",
+      data: createdRoom,
     });
   } catch (error) {
-    console.error('Error creating hotel room:', error);
+    console.error("Error creating hotel room:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to create hotel room'
+      error: "Internal server error",
+      message: "Failed to create hotel room",
     });
   }
 };
@@ -92,18 +92,18 @@ export const getHotelRooms = async (req, res) => {
     if (!hotel) {
       return res.status(404).json({
         success: false,
-        error: 'Hotel not found',
-        message: 'The specified hotel does not exist'
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
       });
     }
 
     // Build where clause
     const whereClause = { hotelId };
-    
+
     if (status) {
       whereClause.status = status;
     }
-    
+
     if (categoryId) {
       whereClause.categoryId = categoryId;
     }
@@ -113,29 +113,29 @@ export const getHotelRooms = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: HotelRoomCategory,
-          as: 'category',
-          attributes: ['id', 'categoryName']
-        }
+          as: "category",
+          attributes: ["id", "categoryName"],
+        },
       ],
-      order: [['roomNo', 'ASC']]
+      order: [["roomNo", "ASC"]],
     });
 
     res.status(200).json({
       success: true,
-      message: 'Hotel rooms retrieved successfully',
-      data: rooms
+      message: "Hotel rooms retrieved successfully",
+      data: rooms,
     });
   } catch (error) {
-    console.error('Error fetching hotel rooms:', error);
+    console.error("Error fetching hotel rooms:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to fetch hotel rooms'
+      error: "Internal server error",
+      message: "Failed to fetch hotel rooms",
     });
   }
 };
@@ -149,36 +149,36 @@ export const getHotelRoomById = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: HotelRoomCategory,
-          as: 'category',
-          attributes: ['id', 'categoryName']
-        }
-      ]
+          as: "category",
+          attributes: ["id", "categoryName"],
+        },
+      ],
     });
 
     if (!room) {
       return res.status(404).json({
         success: false,
-        error: 'Room not found',
-        message: 'The specified hotel room does not exist'
+        error: "Room not found",
+        message: "The specified hotel room does not exist",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Hotel room retrieved successfully',
-      data: room
+      message: "Hotel room retrieved successfully",
+      data: room,
     });
   } catch (error) {
-    console.error('Error fetching hotel room:', error);
+    console.error("Error fetching hotel room:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to fetch hotel room'
+      error: "Internal server error",
+      message: "Failed to fetch hotel room",
     });
   }
 };
@@ -193,8 +193,8 @@ export const updateHotelRoom = async (req, res) => {
     if (!room) {
       return res.status(404).json({
         success: false,
-        error: 'Room not found',
-        message: 'The specified hotel room does not exist'
+        error: "Room not found",
+        message: "The specified hotel room does not exist",
       });
     }
 
@@ -204,15 +204,15 @@ export const updateHotelRoom = async (req, res) => {
         where: {
           roomNo: roomNo.trim(),
           hotelId: room.hotelId,
-          id: { [Op.ne]: id }
-        }
+          id: { [Op.ne]: id },
+        },
       });
 
       if (existingRoom) {
         return res.status(409).json({
           success: false,
-          error: 'Room already exists',
-          message: 'A room with this number already exists for this hotel'
+          error: "Room already exists",
+          message: "A room with this number already exists for this hotel",
         });
       }
     }
@@ -223,17 +223,22 @@ export const updateHotelRoom = async (req, res) => {
       if (!category) {
         return res.status(404).json({
           success: false,
-          error: 'Category not found',
-          message: 'The specified room category does not exist'
+          error: "Category not found",
+          message: "The specified room category does not exist",
         });
       }
     }
 
     await room.update({
       roomNo: roomNo ? roomNo.trim() : room.roomNo,
-      currentGuestName: currentGuestName !== undefined ? (currentGuestName ? currentGuestName.trim() : null) : room.currentGuestName,
+      currentGuestName:
+        currentGuestName !== undefined
+          ? currentGuestName
+            ? currentGuestName.trim()
+            : null
+          : room.currentGuestName,
       status: status || room.status,
-      categoryId: categoryId || room.categoryId
+      categoryId: categoryId || room.categoryId,
     });
 
     // Fetch the updated room with associations
@@ -241,28 +246,28 @@ export const updateHotelRoom = async (req, res) => {
       include: [
         {
           model: Hotel,
-          as: 'hotel',
-          attributes: ['id', 'name']
+          as: "hotel",
+          attributes: ["id", "name"],
         },
         {
           model: HotelRoomCategory,
-          as: 'category',
-          attributes: ['id', 'categoryName']
-        }
-      ]
+          as: "category",
+          attributes: ["id", "categoryName"],
+        },
+      ],
     });
 
     res.status(200).json({
       success: true,
-      message: 'Hotel room updated successfully',
-      data: updatedRoom
+      message: "Hotel room updated successfully",
+      data: updatedRoom,
     });
   } catch (error) {
-    console.error('Error updating hotel room:', error);
+    console.error("Error updating hotel room:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to update hotel room'
+      error: "Internal server error",
+      message: "Failed to update hotel room",
     });
   }
 };
@@ -276,8 +281,8 @@ export const deleteHotelRoom = async (req, res) => {
     if (!room) {
       return res.status(404).json({
         success: false,
-        error: 'Room not found',
-        message: 'The specified hotel room does not exist'
+        error: "Room not found",
+        message: "The specified hotel room does not exist",
       });
     }
 
@@ -285,14 +290,14 @@ export const deleteHotelRoom = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Hotel room deleted successfully'
+      message: "Hotel room deleted successfully",
     });
   } catch (error) {
-    console.error('Error deleting hotel room:', error);
+    console.error("Error deleting hotel room:", error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to delete hotel room'
+      error: "Internal server error",
+      message: "Failed to delete hotel room",
     });
   }
 };
