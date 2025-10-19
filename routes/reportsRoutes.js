@@ -5,6 +5,8 @@ import {
   generateCustomerBill,
   exportGuestRecordsByHotelCSV,
   exportPendingPaymentsReportCSV,
+  exportDailyBalanceSheetCSV,
+  exportMonthlyBalanceSheetCSV,
 } from "../controllers/reportsController.js";
 import { authenticateToken, authorizeRole } from "../middleware/auth.js";
 import {
@@ -50,6 +52,22 @@ router.get(
   authorizeRole("manager", "admin"),
   checkManagerHotelAccess,
   exportPendingPaymentsReportCSV
+);
+
+// Export daily balance sheet CSV report for specified date or today
+router.get(
+  "/daily-balance-sheet/:hotelId/csv",
+  authorizeRole("manager", "admin"),
+  checkManagerHotelAccess,
+  exportDailyBalanceSheetCSV
+);
+
+// Export monthly balance sheet CSV report for current month (1st to current day)
+router.get(
+  "/monthly-balance-sheet/:hotelId/csv",
+  authorizeRole("manager", "admin"),
+  checkManagerHotelAccess,
+  exportMonthlyBalanceSheetCSV
 );
 
 export default router;

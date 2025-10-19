@@ -8,6 +8,8 @@ import Menu from "../models/Menu.js";
 import Hotel from "../models/Hotel.js";
 import HotelManager from "../models/HotelManager.js";
 import GuestPendingPayment from "../models/GuestPendingpayment.js";
+import DailyBalanceSheet from "../models/DailyBalanceSheet.js";
+import Expense from "../models/Expense.js";
 import { json2csv } from "json-2-csv";
 import { Op } from "sequelize";
 
@@ -1124,6 +1126,688 @@ export const exportPendingPaymentsReportCSV = async (req, res) => {
         process.env.NODE_ENV === "development"
           ? error.message
           : "Failed to export pending payments report CSV",
+    });
+  }
+};
+
+// Export daily balance sheet CSV report for specified date or today
+export const exportDailyBalanceSheetCSV = async (req, res) => {
+  try {
+    const { hotelId } = req.params;
+    const { date } = req.query;
+    const userId = req.user.id;
+
+    // Validate required parameters
+    if (!hotelId) {
+      return res.status(400).json({
+        success: false,
+        error: "Hotel ID is required",
+      });
+    }
+
+    // Use provided date or today's date
+    const targetDate = date || new Date().toISOString().split("T")[0]; // Format: YYYY-MM-DD
+
+    // Validate date format if provided
+    if (date) {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(date)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid date format",
+          message: "Date must be in YYYY-MM-DD format",
+        });
+      }
+
+      // Check if the date is valid
+      const parsedDate = new Date(date);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid date",
+          message: "Please provide a valid date",
+        });
+      }
+    }
+
+    // Check if hotel exists
+    const hotel = await Hotel.findByPk(hotelId);
+    if (!hotel) {
+      return res.status(404).json({
+        success: false,
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
+      });
+    }
+
+    // Calculate date range for the specified day (00:00:00 to 23:59:59)
+    const parsedTargetDate = new Date(targetDate);
+    const dayStart = new Date(
+      parsedTargetDate.getFullYear(),
+      parsedTargetDate.getMonth(),
+      parsedTargetDate.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+    const dayEnd = new Date(
+      parsedTargetDate.getFullYear(),
+      parsedTargetDate.getMonth(),
+      parsedTargetDate.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+
+    // Check if daily balance sheet already exists for this date
+    let dailyBalanceSheet = await DailyBalanceSheet.findOne({
+      where: {
+        hotelId: hotelId,
+        date: targetDate,
+      },
+    });
+
+    // Calculate all required data for the day
+    const calculatedData = await calculateDailyBalanceSheetData(
+      hotelId,
+      userId,
+      dayStart,
+      dayEnd,
+      targetDate
+    );
+
+    // If balance sheet doesn't exist, create it
+    if (!dailyBalanceSheet) {
+      dailyBalanceSheet = await DailyBalanceSheet.create({
+        hotelId: hotelId,
+        date: targetDate,
+        ...calculatedData,
+      });
+    } else {
+      // Check if data needs to be updated
+      const needsUpdate = checkIfDataNeedsUpdate(
+        dailyBalanceSheet,
+        calculatedData
+      );
+
+      if (needsUpdate) {
+        // Update the existing balance sheet
+        await dailyBalanceSheet.update(calculatedData);
+        dailyBalanceSheet = await DailyBalanceSheet.findByPk(
+          dailyBalanceSheet.id
+        );
+      }
+    }
+
+    // Format data for CSV export
+    const csvData = formatDailyBalanceSheetForCSV(
+      dailyBalanceSheet,
+      calculatedData
+    );
+
+    // Configure json-2-csv options
+    const options = {
+      keys: Object.keys(csvData),
+      delimiter: {
+        field: ",",
+        wrap: '"',
+        eol: "\n",
+      },
+      prependHeader: true,
+      sortHeader: false,
+      trimFieldValues: true,
+      trimHeaderFields: true,
+    };
+
+    // Generate CSV content using json-2-csv
+    const csvContent = await json2csv([csvData], options);
+
+    // Set response headers for CSV download
+    const fileName = `daily-balance-sheet-${hotel.name}-${targetDate}.csv`;
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Length", Buffer.byteLength(csvContent, "utf8"));
+
+    res.status(200).send(csvContent);
+  } catch (error) {
+    console.error("Error exporting daily balance sheet CSV:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Failed to export daily balance sheet CSV",
+    });
+  }
+};
+
+// Helper function to calculate daily balance sheet data
+async function calculateDailyBalanceSheetData(
+  hotelId,
+  userId,
+  dayStart,
+  dayEnd,
+  date
+) {
+  // Check if it's the first day of the month
+  const currentDate = new Date(date);
+  const isFirstDayOfMonth = currentDate.getDate() === 1;
+
+  let openingBalance = 0;
+
+  if (!isFirstDayOfMonth) {
+    // Get previous day's closing balance for opening balance
+    const previousDate = new Date(date);
+    previousDate.setDate(previousDate.getDate() - 1);
+    const previousDateStr = previousDate.toISOString().split("T")[0];
+
+    const previousBalanceSheet = await DailyBalanceSheet.findOne({
+      where: {
+        hotelId: hotelId,
+        date: previousDateStr,
+      },
+    });
+
+    openingBalance = previousBalanceSheet
+      ? parseFloat(previousBalanceSheet.closingBalance)
+      : 0;
+  }
+
+  // Calculate total rooms booked for the day
+  const totalRoomsBooked = await GuestRecord.count({
+    where: {
+      hotelId: hotelId,
+      checkinDate: date,
+    },
+  });
+
+  // Calculate total bill (rent + food expenses) for the day
+  const guestRecordsForDay = await GuestRecord.findAll({
+    where: {
+      hotelId: hotelId,
+      checkinDate: {
+        [Op.lte]: date,
+      },
+      [Op.or]: [{ checkoutDate: null }, { checkoutDate: { [Op.gte]: date } }],
+    },
+  });
+
+  const guestIds = guestRecordsForDay.map((record) => record.id);
+
+  // Calculate total rent for the day
+  const totalRent = guestRecordsForDay.reduce((sum, record) => {
+    return sum + parseFloat(record.rent || 0);
+  }, 0);
+
+  // Calculate total food expenses for the day
+  const foodExpenses = await GuestExpense.findAll({
+    where: {
+      bookingId: { [Op.in]: guestIds },
+      expenseType: "food",
+      createdAt: {
+        [Op.gte]: dayStart,
+        [Op.lte]: dayEnd,
+      },
+    },
+  });
+
+  const totalFoodExpenses = foodExpenses.reduce((sum, expense) => {
+    return sum + parseFloat(expense.amount || 0);
+  }, 0);
+
+  const totalBill = totalRent + totalFoodExpenses;
+
+  // Calculate total pending amount for the day
+  const pendingPayments = await GuestPendingPayment.findAll({
+    where: {
+      hotelId: hotelId,
+      createdAt: {
+        [Op.gte]: dayStart,
+        [Op.lte]: dayEnd,
+      },
+    },
+  });
+
+  const totalPendingAmount = pendingPayments.reduce((sum, payment) => {
+    return sum + parseFloat(payment.pendingAmount || 0);
+  }, 0);
+
+  // Calculate total expenses for the day
+  const expenses = await Expense.findAll({
+    where: {
+      hotelId: hotelId,
+      createdAt: {
+        [Op.gte]: dayStart,
+        [Op.lte]: dayEnd,
+      },
+    },
+  });
+
+  const totalExpenses = expenses.reduce((sum, expense) => {
+    return sum + parseFloat(expense.amount || 0);
+  }, 0);
+
+  // Calculate payment modes with amounts for the day
+  const paymentModes = await PaymentMode.findAll({
+    attributes: ["id", "paymentMode"],
+    where: { createdBy: userId },
+    raw: true,
+  });
+
+  const transactions = await GuestTransaction.findAll({
+    attributes: [
+      [sequelize.col("paymentMode.id"), "paymentModeId"],
+      [sequelize.col("paymentMode.paymentMode"), "paymentMode"],
+      [
+        sequelize.fn("SUM", sequelize.col("GuestTransaction.amount")),
+        "totalAmount",
+      ],
+    ],
+    include: [
+      {
+        model: GuestRecord,
+        as: "booking",
+        attributes: [],
+        where: {
+          hotelId: hotelId,
+        },
+        required: true,
+      },
+      {
+        model: PaymentMode,
+        as: "paymentMode",
+        attributes: [],
+        where: { createdBy: userId },
+        required: true,
+      },
+    ],
+    where: {
+      paymentDate: {
+        [Op.gte]: dayStart,
+        [Op.lte]: dayEnd,
+      },
+    },
+    group: ["paymentMode.id", "paymentMode.paymentMode"],
+    raw: true,
+  });
+
+  // Create payment modes object
+  const paymentModesData = {};
+  paymentModes.forEach((mode) => {
+    const transaction = transactions.find((t) => t.paymentModeId === mode.id);
+    paymentModesData[mode.paymentMode] = transaction
+      ? parseFloat(transaction.totalAmount)
+      : 0;
+  });
+
+  // Calculate cash in hand (assuming cash is one of the payment modes)
+  const cashInHand = paymentModesData["Cash"] || 0;
+
+  // Calculate closing balance
+  const closingBalance = openingBalance + totalBill - totalExpenses;
+
+  // Calculate additional tracking fields
+  const totalGuestsCheckedOut = await GuestRecord.count({
+    where: {
+      hotelId: hotelId,
+      checkoutDate: date,
+    },
+  });
+
+  const totalTransactions = await GuestTransaction.count({
+    include: [
+      {
+        model: GuestRecord,
+        as: "booking",
+        attributes: [],
+        where: {
+          hotelId: hotelId,
+        },
+        required: true,
+      },
+    ],
+    where: {
+      paymentDate: {
+        [Op.gte]: dayStart,
+        [Op.lte]: dayEnd,
+      },
+    },
+  });
+
+  return {
+    openingBalance,
+    totalRoomsBooked,
+    totalBill,
+    totalPendingAmount,
+    totalExpenses,
+    paymentModes: paymentModesData,
+    cashInHand,
+    closingBalance,
+    totalGuestsCheckedOut,
+    totalTransactions,
+  };
+}
+
+// Helper function to check if data needs to be updated
+function checkIfDataNeedsUpdate(existingData, calculatedData) {
+  const fieldsToCheck = [
+    "openingBalance",
+    "totalRoomsBooked",
+    "totalBill",
+    "totalPendingAmount",
+    "totalExpenses",
+    "cashInHand",
+    "closingBalance",
+    "totalGuestsCheckedOut",
+    "totalTransactions",
+  ];
+
+  for (const field of fieldsToCheck) {
+    if (
+      Math.abs(
+        parseFloat(existingData[field] || 0) -
+          parseFloat(calculatedData[field] || 0)
+      ) > 0.01
+    ) {
+      return true;
+    }
+  }
+
+  // Check payment modes
+  const existingPaymentModes = existingData.paymentModes || {};
+  const calculatedPaymentModes = calculatedData.paymentModes || {};
+
+  for (const [mode, amount] of Object.entries(calculatedPaymentModes)) {
+    if (
+      Math.abs(
+        parseFloat(existingPaymentModes[mode] || 0) - parseFloat(amount || 0)
+      ) > 0.01
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Helper function to format daily balance sheet for CSV
+function formatDailyBalanceSheetForCSV(balanceSheet, calculatedData) {
+  const paymentModesData = balanceSheet.paymentModes || {};
+
+  return {
+    Date: balanceSheet.date,
+    "Hotel ID": balanceSheet.hotelId,
+    "Opening Balance": parseFloat(balanceSheet.openingBalance || 0).toFixed(2),
+    "Total Rooms Booked": balanceSheet.totalRoomsBooked || 0,
+    "Total Bill (Rent + Food)": parseFloat(balanceSheet.totalBill || 0).toFixed(
+      2
+    ),
+    "Total Pending Amount": parseFloat(
+      balanceSheet.totalPendingAmount || 0
+    ).toFixed(2),
+    "Total Expenses": parseFloat(balanceSheet.totalExpenses || 0).toFixed(2),
+    "Cash in Hand": parseFloat(balanceSheet.cashInHand || 0).toFixed(2),
+    "Total Guests Checked Out": balanceSheet.totalGuestsCheckedOut || 0,
+    "Total Transactions": balanceSheet.totalTransactions || 0,
+    ...Object.fromEntries(
+      Object.entries(paymentModesData).map(([mode, amount]) => [
+        `Payment Mode - ${mode}`,
+        parseFloat(amount || 0).toFixed(2),
+      ])
+    ),
+    "Closing Balance": parseFloat(balanceSheet.closingBalance || 0).toFixed(2),
+  };
+}
+
+// Export monthly balance sheet for current month (1st to current day)
+export const exportMonthlyBalanceSheetCSV = async (req, res) => {
+  try {
+    const { hotelId } = req.params;
+    const userId = req.user.id;
+
+    // Validate required parameters
+    if (!hotelId) {
+      return res.status(400).json({
+        success: false,
+        error: "Hotel ID is required",
+      });
+    }
+
+    // Check if hotel exists
+    const hotel = await Hotel.findByPk(hotelId);
+    if (!hotel) {
+      return res.status(404).json({
+        success: false,
+        error: "Hotel not found",
+        message: "The specified hotel does not exist",
+      });
+    }
+
+    const now = new Date();
+    const currentDay = now.getDate();
+
+    // Calculate date range for current month (from 1st day to current day)
+    const monthStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+    const monthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      currentDay,
+      23,
+      59,
+      59,
+      999
+    );
+
+    console.log("Monthly Balance Sheet Range:");
+    console.log(
+      "From:",
+      monthStart.toISOString(),
+      "To:",
+      monthEnd.toISOString()
+    );
+
+    // Get all daily balance sheets for the current month (1st to current day)
+    const dailyBalanceSheets = await DailyBalanceSheet.findAll({
+      where: {
+        hotelId: hotelId,
+        date: {
+          [Op.gte]: monthStart.toISOString().split("T")[0],
+          [Op.lte]: monthEnd.toISOString().split("T")[0],
+        },
+      },
+      order: [["date", "ASC"]],
+    });
+
+    // If no daily balance sheets exist, calculate them for each day
+    if (dailyBalanceSheets.length === 0) {
+      // Generate daily balance sheets for each day from 1st to current day
+      const generatedSheets = [];
+
+      for (let day = 1; day <= currentDay; day++) {
+        const targetDate = new Date(now.getFullYear(), now.getMonth(), day);
+        const dateStr = targetDate.toISOString().split("T")[0];
+
+        const dayStart = new Date(
+          targetDate.getFullYear(),
+          targetDate.getMonth(),
+          targetDate.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        const dayEnd = new Date(
+          targetDate.getFullYear(),
+          targetDate.getMonth(),
+          targetDate.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+
+        const calculatedData = await calculateDailyBalanceSheetData(
+          hotelId,
+          userId,
+          dayStart,
+          dayEnd,
+          dateStr
+        );
+
+        // Create or update the daily balance sheet
+        const [balanceSheet] = await DailyBalanceSheet.findOrCreate({
+          where: {
+            hotelId: hotelId,
+            date: dateStr,
+          },
+          defaults: {
+            hotelId: hotelId,
+            date: dateStr,
+            ...calculatedData,
+          },
+        });
+
+        // Update if needed
+        const needsUpdate = checkIfDataNeedsUpdate(
+          balanceSheet,
+          calculatedData
+        );
+        if (needsUpdate) {
+          await balanceSheet.update(calculatedData);
+        }
+
+        generatedSheets.push(balanceSheet);
+      }
+
+      // Use the generated sheets
+      dailyBalanceSheets.push(...generatedSheets);
+    }
+
+    // Calculate monthly totals
+    const monthlyTotals = {
+      totalRoomsBooked: 0,
+      totalBill: 0,
+      totalPendingAmount: 0,
+      totalExpenses: 0,
+      totalGuestsCheckedOut: 0,
+      totalTransactions: 0,
+      paymentModes: {},
+      openingBalance: 0,
+      closingBalance: 0,
+    };
+
+    // Process each daily balance sheet
+    dailyBalanceSheets.forEach((sheet, index) => {
+      monthlyTotals.totalRoomsBooked += parseInt(sheet.totalRoomsBooked || 0);
+      monthlyTotals.totalBill += parseFloat(sheet.totalBill || 0);
+      monthlyTotals.totalPendingAmount += parseFloat(
+        sheet.totalPendingAmount || 0
+      );
+      monthlyTotals.totalExpenses += parseFloat(sheet.totalExpenses || 0);
+      monthlyTotals.totalGuestsCheckedOut += parseInt(
+        sheet.totalGuestsCheckedOut || 0
+      );
+      monthlyTotals.totalTransactions += parseInt(sheet.totalTransactions || 0);
+
+      // Get opening balance from first day
+      if (index === 0) {
+        monthlyTotals.openingBalance = parseFloat(sheet.openingBalance || 0);
+      }
+
+      // Get closing balance from last day
+      if (index === dailyBalanceSheets.length - 1) {
+        monthlyTotals.closingBalance = parseFloat(sheet.closingBalance || 0);
+      }
+
+      // Aggregate payment modes
+      const paymentModes = sheet.paymentModes || {};
+      Object.entries(paymentModes).forEach(([mode, amount]) => {
+        if (!monthlyTotals.paymentModes[mode]) {
+          monthlyTotals.paymentModes[mode] = 0;
+        }
+        monthlyTotals.paymentModes[mode] += parseFloat(amount || 0);
+      });
+    });
+
+    // Format data for CSV export
+    const csvData = [];
+
+    // Add daily breakdown
+    dailyBalanceSheets.forEach((sheet) => {
+      const paymentModesData = sheet.paymentModes || {};
+      csvData.push({
+        Date: sheet.date,
+        "Opening Balance": parseFloat(sheet.openingBalance || 0).toFixed(2),
+        "Total Rooms Booked": sheet.totalRoomsBooked || 0,
+        "Total Bill (Rent + Food)": parseFloat(sheet.totalBill || 0).toFixed(2),
+        "Total Pending Amount": parseFloat(
+          sheet.totalPendingAmount || 0
+        ).toFixed(2),
+        "Total Expenses": parseFloat(sheet.totalExpenses || 0).toFixed(2),
+        "Cash in Hand": parseFloat(sheet.cashInHand || 0).toFixed(2),
+        "Total Guests Checked Out": sheet.totalGuestsCheckedOut || 0,
+        "Total Transactions": sheet.totalTransactions || 0,
+        ...Object.fromEntries(
+          Object.entries(paymentModesData).map(([mode, amount]) => [
+            `Payment Mode - ${mode}`,
+            parseFloat(amount || 0).toFixed(2),
+          ])
+        ),
+        "Closing Balance": parseFloat(sheet.closingBalance || 0).toFixed(2),
+      });
+    });
+
+    // Configure json-2-csv options
+    const options = {
+      keys: csvData.length > 0 ? Object.keys(csvData[0]) : [],
+      delimiter: {
+        field: ",",
+        wrap: '"',
+        eol: "\n",
+      },
+      prependHeader: true,
+      sortHeader: false,
+      trimFieldValues: true,
+      trimHeaderFields: true,
+    };
+
+    // Generate CSV content using json-2-csv
+    const csvContent = await json2csv(csvData, options);
+
+    // Set response headers for CSV download
+    const fileName = `monthly-balance-sheet-${
+      hotel.name
+    }-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-1-to-${currentDay}.csv`;
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Length", Buffer.byteLength(csvContent, "utf8"));
+
+    res.status(200).send(csvContent);
+  } catch (error) {
+    console.error("Error exporting monthly balance sheet CSV:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Failed to export monthly balance sheet CSV",
     });
   }
 };
