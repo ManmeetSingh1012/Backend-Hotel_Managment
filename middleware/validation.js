@@ -728,8 +728,9 @@ const validateMenuSearch = (req, res, next) => {
 };
 
 // Validate food expense data for adding
+// Validate food expense data for adding
 const validateAddFoodExpense = (req, res, next) => {
-  const { menuId, portionType, quantity } = req.body;
+  const { menuId, portionType, quantity, type, price } = req.body;
   const { bookingId } = req.params;
   const errors = [];
 
@@ -742,23 +743,42 @@ const validateAddFoodExpense = (req, res, next) => {
     errors.push("Valid booking ID (UUID) is required");
   }
 
-  // Menu ID validation
-  if (!menuId || !uuidRegex.test(menuId)) {
-    errors.push("Valid menu ID (UUID) is required");
-  }
+  // Check if type is custom
+  if (type === "custom") {
+    // Custom food validations
+    // Price validation
+    if (!price || isNaN(Number(price)) || Number(price) <= 0) {
+      errors.push("Price must be a positive number for custom food");
+    }
 
-  // Portion type validation
-  if (!portionType || !["half", "full"].includes(portionType)) {
-    errors.push('Portion type must be either "half" or "full"');
-  }
+    // Quantity validation
+    if (
+      !quantity ||
+      !Number.isInteger(Number(quantity)) ||
+      Number(quantity) < 1
+    ) {
+      errors.push("Quantity must be a positive integer");
+    }
+  } else {
+    // Regular menu food validations
+    // Menu ID validation
+    if (!menuId || !uuidRegex.test(menuId)) {
+      errors.push("Valid menu ID (UUID) is required");
+    }
 
-  // Quantity validation
-  if (
-    !quantity ||
-    !Number.isInteger(Number(quantity)) ||
-    Number(quantity) < 1
-  ) {
-    errors.push("Quantity must be a positive integer");
+    // Portion type validation
+    if (!portionType || !["half", "full"].includes(portionType)) {
+      errors.push('Portion type must be either "half" or "full"');
+    }
+
+    // Quantity validation
+    if (
+      !quantity ||
+      !Number.isInteger(Number(quantity)) ||
+      Number(quantity) < 1
+    ) {
+      errors.push("Quantity must be a positive integer");
+    }
   }
 
   if (errors.length > 0) {

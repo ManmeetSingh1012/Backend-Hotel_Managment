@@ -18,7 +18,7 @@ import {
 // Add food expense with single item
 export const addFoodExpense = async (req, res) => {
   try {
-    const { menuId, portionType, quantity } = req.body;
+    const { menuId, portionType, quantity, type, price } = req.body;
     const { bookingId } = req.params;
     const userId = req.user.id;
     const userRole = req.user.role;
@@ -67,108 +67,171 @@ export const addFoodExpense = async (req, res) => {
       });
     }
 
-    // Fetch the menu item to validate it exists and get price
-    const menu = await Menu.findByPk(menuId);
-
-    if (!menu) {
-      return res.status(404).json({
-        success: false,
-        error: "Menu item not found",
-        message: `Menu item with ID ${menuId} does not exist`,
-      });
-    }
-
-    // Get price based on portion type
-    let pricePerItem;
-    if (portionType === "half") {
-      if (!menu.halfPlatePrice) {
+    if (type === "custom") {
+      // Handle custom food order
+      if (!price || !quantity) {
         return res.status(400).json({
           success: false,
-          error: "Half plate not available",
-          message: `Half plate is not available for menu item: ${menu.name}`,
+          error: "Validation error",
+          message: "Price and quantity are required for custom food",
         });
       }
-      pricePerItem = parseFloat(menu.halfPlatePrice);
-    } else {
-      pricePerItem = parseFloat(menu.fullPlatePrice);
-    }
 
-    const totalAmount = pricePerItem * parseInt(quantity);
+      const totalAmount = parseFloat(price) * parseInt(quantity);
 
-    // Use transaction to ensure data consistency
-    const result = await sequelize.transaction(async (t) => {
-      // Create the GuestExpense record
-      const guestExpense = await GuestExpense.create(
+      // Use transaction to ensure data consistency
+      const result = await sequelize.transaction(async (t) => {
+        // Create only GuestExpense record for custom food
+        const guestExpense = await GuestExpense.create(
+          {
+            bookingId: bookingId,
+            expenseType: "food",
+            amount: totalAmount,
+          },
+          { transaction: t }
+        );
+
+        return { guestExpense };
+      });
+
+      // Format the data to match getFoodExpenseByBookingId response format
+      const formattedData = [
         {
-          bookingId: bookingId,
-          expenseType: "food",
-          amount: totalAmount,
-        },
-        { transaction: t }
-      );
-
-      // Create the GuestFoodOrder record
-      const foodOrder = await GuestFoodOrder.create(
-        {
-          guestExpenseId: guestExpense.id,
-          menuId: menuId,
-          portionType: portionType,
+          foodOrderId: null, // No food order for custom food
+          expenseId: result.guestExpense.id,
+          name: "Custom",
           quantity: parseInt(quantity),
-          unitPrice: pricePerItem,
+          portionType: "full",
+          unitPrice: parseFloat(price).toFixed(2),
+          totalPrice: totalAmount.toFixed(2),
         },
-        { transaction: t }
+      ];
+
+      // Calculate grand total
+      const grandTotal = formattedData.reduce(
+        (sum, item) => sum + parseFloat(item.totalPrice),
+        0
       );
 
-      return { guestExpense, foodOrder };
-    });
+      // Return response for custom food
+      return res.status(201).json({
+        success: true,
+        message: "Custom food expense added successfully",
+        data: {
+          orders: formattedData,
+          grandTotal: grandTotal.toFixed(2),
+          date: new Date().toISOString().split("T")[0],
+        },
+      });
+    } else {
+      // Handle regular menu food order
+      // Fetch the menu item to validate it exists and get price
+      const menu = await Menu.findByPk(menuId);
 
-    // Fetch the created expense with food order and menu details
-    const createdExpense = await GuestExpense.findByPk(result.guestExpense.id, {
-      include: [
+      if (!menu) {
+        return res.status(404).json({
+          success: false,
+          error: "Menu item not found",
+          message: `Menu item with ID ${menuId} does not exist`,
+        });
+      }
+
+      // Get price based on portion type
+      let pricePerItem;
+
+      if (portionType === "half") {
+        if (!menu.halfPlatePrice) {
+          return res.status(400).json({
+            success: false,
+            error: "Half plate not available",
+            message: `Half plate is not available for menu item: ${menu.name}`,
+          });
+        }
+        pricePerItem = parseFloat(menu.halfPlatePrice);
+      } else {
+        pricePerItem = parseFloat(menu.fullPlatePrice);
+      }
+
+      const totalAmount = pricePerItem * parseInt(quantity);
+
+      // Use transaction to ensure data consistency
+      const result = await sequelize.transaction(async (t) => {
+        // Create the GuestExpense record
+        const guestExpense = await GuestExpense.create(
+          {
+            bookingId: bookingId,
+            expenseType: "food",
+            amount: totalAmount,
+          },
+          { transaction: t }
+        );
+
+        // Create the GuestFoodOrder record
+        const foodOrder = await GuestFoodOrder.create(
+          {
+            guestExpenseId: guestExpense.id,
+            menuId: menuId,
+            portionType: portionType,
+            quantity: parseInt(quantity),
+            unitPrice: pricePerItem,
+          },
+          { transaction: t }
+        );
+
+        return { guestExpense, foodOrder };
+      });
+
+      // Fetch the created expense with food order and menu details
+      const createdExpense = await GuestExpense.findByPk(
+        result.guestExpense.id,
         {
-          model: GuestFoodOrder,
-          as: "foodOrders",
           include: [
             {
-              model: Menu,
-              as: "menu",
-              attributes: ["name"],
+              model: GuestFoodOrder,
+              as: "foodOrders",
+              include: [
+                {
+                  model: Menu,
+                  as: "menu",
+                  attributes: ["name"],
+                },
+              ],
             },
           ],
-        },
-      ],
-    });
+        }
+      );
 
-    // Format the data to match getFoodExpenseByBookingId response format
-    const formattedData = [];
+      // Format the data to match getFoodExpenseByBookingId response format
+      const formattedData = [];
 
-    createdExpense.foodOrders.forEach((order) => {
-      formattedData.push({
-        foodOrderId: order.id,
-        expenseId: createdExpense.id,
-        name: order.menu.name,
-        quantity: order.quantity,
-        portionType: order.portionType, // 'half' or 'full'
-        unitPrice: parseFloat(order.unitPrice).toFixed(2), // Price per single portion
-        totalPrice: parseFloat(order.unitPrice * order.quantity).toFixed(2),
+      createdExpense.foodOrders.forEach((order) => {
+        formattedData.push({
+          foodOrderId: order.id,
+          expenseId: createdExpense.id,
+          name: order.menu.name,
+          quantity: order.quantity,
+          portionType: order.portionType, // 'half' or 'full'
+          unitPrice: parseFloat(order.unitPrice).toFixed(2), // Price per single portion
+          totalPrice: parseFloat(order.unitPrice * order.quantity).toFixed(2),
+        });
       });
-    });
 
-    // Calculate grand total
-    const grandTotal = formattedData.reduce(
-      (sum, item) => sum + parseFloat(item.totalPrice),
-      0
-    );
+      // Calculate grand total
+      const grandTotal = formattedData.reduce(
+        (sum, item) => sum + parseFloat(item.totalPrice),
+        0
+      );
 
-    res.status(201).json({
-      success: true,
-      message: "Food expense added successfully",
-      data: {
-        orders: formattedData,
-        grandTotal: grandTotal.toFixed(2),
-        date: new Date().toISOString().split("T")[0], // Current date
-      },
-    });
+      res.status(201).json({
+        success: true,
+        message: "Food expense added successfully",
+        data: {
+          orders: formattedData,
+          grandTotal: grandTotal.toFixed(2),
+          date: new Date().toISOString().split("T")[0], // Current date
+        },
+      });
+    }
   } catch (error) {
     console.error("Add food expense error:", error);
 
@@ -456,6 +519,7 @@ export const getFoodExpenseByBookingId = async (req, res) => {
         {
           model: GuestFoodOrder,
           as: "foodOrders",
+          required: false, // LEFT JOIN to include expenses without food orders (custom food)
           include: [
             {
               model: Menu,
@@ -471,17 +535,33 @@ export const getFoodExpenseByBookingId = async (req, res) => {
     const formattedData = [];
 
     foodExpenses.forEach((expense) => {
-      expense.foodOrders.forEach((order) => {
-        formattedData.push({
-          foodOrderId: order.id,
-          expenseId: expense.id,
-          name: order.menu.name,
-          quantity: order.quantity,
-          portionType: order.portionType, // 'half' or 'full'
-          unitPrice: parseFloat(order.unitPrice).toFixed(2), // Price per single portion
-          totalPrice: parseFloat(order.unitPrice * order.quantity).toFixed(2),
+      // Check if this expense has food orders (regular menu items)
+      if (expense.foodOrders && expense.foodOrders.length > 0) {
+        // Regular menu food orders
+        expense.foodOrders.forEach((order) => {
+          formattedData.push({
+            foodOrderId: order.id,
+            expenseId: expense.id,
+            name: order.menu.name,
+            quantity: order.quantity,
+            portionType: order.portionType, // 'half' or 'full'
+            unitPrice: parseFloat(order.unitPrice).toFixed(2), // Price per single portion
+            totalPrice: parseFloat(order.unitPrice * order.quantity).toFixed(2),
+          });
         });
-      });
+      } else {
+        // Custom food order (no associated GuestFoodOrder)
+        // Calculate unit price from total amount (assuming quantity is 1 if not stored)
+        formattedData.push({
+          foodOrderId: null,
+          expenseId: expense.id,
+          name: "Custom",
+          quantity: 1, // Default quantity for custom food
+          portionType: "full",
+          unitPrice: parseFloat(expense.amount).toFixed(2),
+          totalPrice: parseFloat(expense.amount).toFixed(2),
+        });
+      }
     });
 
     // Calculate grand total
