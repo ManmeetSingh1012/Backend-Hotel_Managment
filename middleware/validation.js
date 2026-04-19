@@ -256,15 +256,18 @@ const validateCreateManagerAndAssign = (req, res, next) => {
 const validateGuestRecordData = (req, res, next) => {
   const {
     hotelId,
-    guestName,
+ 
     phoneNo,
     roomNo,
     checkinTime,
     paymentId,
-    advancePayment,
+
     gstApplicable,
     rent,
     bill,
+    occupancyType,
+   
+    guestMembers,
   } = req.body;
   const errors = [];
 
@@ -275,15 +278,7 @@ const validateGuestRecordData = (req, res, next) => {
     errors.push("Valid hotel ID (UUID) is required");
   }
 
-  // Guest name validation
-  if (
-    !guestName ||
-    guestName.trim().length < 2 ||
-    guestName.trim().length > 200
-  ) {
-    errors.push("Guest name must be between 2 and 200 characters");
-  }
-
+  
   // Phone number validation
   // Accepts 10-16 digit numbers, optionally starting with '+'
   const phoneRegex = /^(\+?\d{1,4}[- ]?)?\d{10,16}$/;
@@ -341,6 +336,19 @@ const validateGuestRecordData = (req, res, next) => {
     typeof gstApplicable !== "boolean"
   ) {
     errors.push("GST applicable must be a boolean and is required");
+  }
+
+
+
+  if(!occupancyType)
+  {
+    errors.push("Occupancy type is required");
+  }
+
+
+  if(!guestMembers || !Array.isArray(guestMembers) || guestMembers.length ===0)
+  {
+    errors.push("At least one guest member is required");
   }
 
   if (errors.length > 0) {
@@ -530,6 +538,42 @@ const validateGuestRecordUpdate = (req, res, next) => {
 
   next();
 };
+
+
+// validations/amenity.validation.js
+export const validateAmenity = (data) => {
+  const errors = [];
+
+  if (!data.name || data.name.trim() === '') {
+    errors.push('Amenity name is required');
+  }
+
+  if (data.isChargeable && (data.defaultPrice == null || data.defaultPrice < 0)) {
+    errors.push('Chargeable amenity must have a valid price');
+  }
+
+  return errors;
+};
+
+
+// validations/guestAmenity.validation.js
+export const validateGuestAmenity = (data) => {
+  const errors = [];
+
+  if (!data.guestRecordId) errors.push('Guest record ID is required');
+  if (!data.amenityId) errors.push('Amenity ID is required');
+
+  if (data.quantity <= 0) {
+    errors.push('Quantity must be greater than 0');
+  }
+
+  if (data.isChargeable && data.price < 0) {
+    errors.push('Invalid amenity price');
+  }
+
+  return errors;
+};
+
 
 // Validate expense data
 const validateExpenseData = (req, res, next) => {

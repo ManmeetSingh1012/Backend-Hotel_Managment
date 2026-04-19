@@ -1,5 +1,6 @@
 import PaymentMode from '../models/PaymentMode.js';
 
+
 // Create a new payment mode
 export const createPaymentMode = async (req, res) => {
   try {
@@ -50,6 +51,9 @@ export const getPaymentModes = async (req, res) => {
       where: { createdBy: userId },
       order: [['createdAt', 'DESC']]
     });
+
+     
+
 
     res.status(200).json({
       success: true,

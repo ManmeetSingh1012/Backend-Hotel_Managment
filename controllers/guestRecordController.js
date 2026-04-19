@@ -5,8 +5,7 @@ import {
   GuestTransaction,
   GuestExpense,
   PaymentMode,
-  Menu,
-  GuestFoodOrder,
+  GuestMembers,
   GuestPendingPayment,
   sequelize,
 } from "../models/index.js";
@@ -15,6 +14,7 @@ import {
   convertNestedDecimalFields,
   convertDecimalFields,
 } from "../utils/decimalConverter.js";
+
 
 // Helper function to calculate pending amount for a guest
 const calculatePendingAmount = async (guestId, targetDate = null) => {
@@ -169,7 +169,6 @@ export const createGuestRecord = async (req, res) => {
   try {
     const {
       hotelId,
-      guestName,
       phoneNo,
       roomNo,
       checkinTime,
@@ -178,6 +177,9 @@ export const createGuestRecord = async (req, res) => {
       rent,
       bill,
       gstApplicable,
+      occupancyType,
+      alternatePhoneNo,
+      guestMembers
     } = req.body;
 
     const userId = req.user.id;
@@ -234,14 +236,20 @@ export const createGuestRecord = async (req, res) => {
     // Prepare data for creation
     const guestData = {
       hotelId,
-      guestName,
       phoneNo,
       roomNo,
       checkinTime,
       rent,
       bill,
       gstApplicable,
+      occupancyType,
     };
+
+
+    if(alternatePhoneNo)
+    {
+      guestData.alternatePhoneNo = alternatePhoneNo;
+    }
 
     // Use transaction to ensure data consistency
     const result = await sequelize.transaction(async (t) => {
@@ -249,6 +257,7 @@ export const createGuestRecord = async (req, res) => {
       const guestRecord = await GuestRecord.create(guestData, {
         transaction: t,
       });
+      console.log(`Created guest record with ID: ${guestRecord}`);
 
       // Create payment transaction if payment mode, type, and amount are provided
 
@@ -263,6 +272,14 @@ export const createGuestRecord = async (req, res) => {
           { transaction: t }
         );
       }
+
+      await GuestMembers.bulkCreate(
+        guestMembers.map((members)=>({
+          ...members,
+          guestRecordId : guestRecord.id
+        })),
+         { transaction: t }  
+      )
 
       return guestRecord;
     });

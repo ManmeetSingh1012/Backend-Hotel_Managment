@@ -14,6 +14,8 @@ import HotelRoomCategory from "./HotelRoomCategory.js";
 import HotelRoom from "./HotelRoom.js";
 import GuestPendingPayment from "./GuestPendingpayment.js";
 import DailyBalanceSheet from "./DailyBalanceSheet.js";
+import GuestMembers from "./GuestMembers.js";
+import HotelConfigration from "./hotelConfigration.js";
 // Define associations
 // Hotel belongs to User (createdBy relationship)
 Hotel.belongsTo(User, {
@@ -240,6 +242,18 @@ Hotel.hasMany(DailyBalanceSheet, {
   as: "balanceSheets",
 });
 
+
+GuestRecord.hasMany(GuestMembers,{
+  foreignKey : "guestRecordId",
+  as : "guestMembers",
+})
+
+GuestMembers.belongsTo(GuestRecord,{
+    foreignKey : "guestRecordId",
+    as : "guestRecord",
+  
+})
+
 // Export models and sequelize instance
 export {
   sequelize,
@@ -258,4 +272,6 @@ export {
   HotelRoom,
   GuestPendingPayment,
   DailyBalanceSheet,
+  GuestMembers,
+  HotelConfigration,
 };
