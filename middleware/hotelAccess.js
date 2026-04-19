@@ -7,6 +7,9 @@ export const checkManagerHotelAccess = async (req, res, next) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
+    console.log("userRole", userRole);
+    console.log("userId", userId);
+    console.log("hotelId", hotelId);
     // Admin has access to all hotels
     if (userRole === "admin") {
       return next();
@@ -16,7 +19,7 @@ export const checkManagerHotelAccess = async (req, res, next) => {
     if (userRole === "manager") {
       const assignment = await HotelManager.findOne({
         where: {
-          managerId: userId,
+          userId: userId,
           hotelId: hotelId,
           status: "active",
         },

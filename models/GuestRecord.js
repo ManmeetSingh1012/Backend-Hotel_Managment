@@ -21,16 +21,7 @@ const GuestRecord = sequelize.define('GuestRecord', {
   serialNo: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    autoIncrement: true,
     unique: true
-  },
-  guestName: {
-    type: DataTypes.STRING(200),
-    allowNull: false,
-    validate: {
-      notEmpty: true,
-      len: [2, 200]
-    }
   },
   phoneNo: {
     type: DataTypes.STRING(20),
@@ -42,6 +33,22 @@ const GuestRecord = sequelize.define('GuestRecord', {
         msg: 'Phone number must be exactly 10 digits'
       }
     }
+  },
+  alternatePhoneNo:{
+
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    validate: {
+      is: {
+        args: /^\d{10}$/,
+        msg: 'Alternate phone number must be exactly 10 digits'
+      }
+    }
+  },
+  occupancyType:{
+    type: DataTypes.ENUM('single', 'double', 'family'),
+    allowNull: false,
+   
   },
   roomNo: {
     type: DataTypes.STRING(20),
@@ -117,7 +124,7 @@ const GuestRecord = sequelize.define('GuestRecord', {
      
     },
 
-    beforeCreate: async (guestRecord) => {
+       beforeCreate: async (guestRecord) => {
       // Generate serial number if not provided
       if (!guestRecord.serialNo) {
         const lastRecord = await GuestRecord.findOne({

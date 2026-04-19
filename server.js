@@ -25,8 +25,8 @@ app.use(
     origin: [
       "http://localhost:3000",
 
-      "https://www.checkinsuite.in",
-      "https://www.checkinsuite.in/",
+      "https://app.checkinsuite.in",
+      "https://app.checkinsuite.in/",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -62,6 +62,7 @@ import menuRoutes from "./routes/menuRoute.js";
 import hotelRoomRoutes from "./routes/hotelRoomsRoute.js";
 import hotelRoomCategoryRoutes from "./routes/hotelRoomCategoryRoutes.js";
 import guestPendingPaymentRoutes from "./routes/guestPendingPaymentRoutes.js";
+import hotelConfigration from "./routes/hotelConfigrationRoutes.js";
 
 // Test route to verify server is working
 app.get("/api/test", (req, res) => {
@@ -95,6 +96,7 @@ app.use("/api/menu", menuRoutes);
 app.use("/api/hotel-rooms", hotelRoomRoutes);
 app.use("/api/hotel-room-categories", hotelRoomCategoryRoutes);
 app.use("/api/guest-pending-payments", guestPendingPaymentRoutes);
+app.use("/api/hotel-configration", hotelConfigration);
 // Root route
 app.get("/", (req, res) => {
   res.json({
@@ -147,7 +149,7 @@ const initializeServer = async () => {
   try {
     await testConnection();
 
-    //await syncDatabase("daily_balance_sheets");
+    //await syncDatabase("guest_records");
 
     // Start server
     app.listen(PORT, () => {

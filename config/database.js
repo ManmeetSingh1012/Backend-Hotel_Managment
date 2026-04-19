@@ -116,6 +116,8 @@ const syncDatabase = async (tableName = null, options = { alter: true }) => {
         HotelRoom,
         GuestPendingPayment,
         DailyBalanceSheet,
+        GuestMembers,
+        HotelConfigration
       } = await import("../models/index.js");
 
       // Map table names to models
@@ -135,6 +137,8 @@ const syncDatabase = async (tableName = null, options = { alter: true }) => {
         hotel_rooms: HotelRoom,
         guest_pending_payments: GuestPendingPayment,
         daily_balance_sheets: DailyBalanceSheet,
+        guest_members: GuestMembers,
+        hotel_configrations: HotelConfigration,
       };
 
       const model = modelMap[tableName.toLowerCase()];

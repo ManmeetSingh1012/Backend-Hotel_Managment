@@ -99,7 +99,7 @@ const signin = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         error: "Invalid credentials",
         message: "Username/email or password is incorrect",
@@ -109,7 +109,7 @@ const signin = async (req, res) => {
     // Verify password
     const isValidPassword = await user.comparePassword(password);
     if (!isValidPassword) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         error: "Invalid credentials",
         message: "Username/email or password is incorrect",
